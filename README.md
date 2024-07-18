@@ -120,10 +120,6 @@ backlight_capture /dev/ttyUSBX -H 21 -V 9 -t 32 -s 4 -b 0.2 -f 60
 - `-f`, `--max-fps`: Maximum frames per second
 - `-o`, `--output-display`: Output display (for X11 and Wayland)
 
-## Logging
-
-Logs are stored in `/tmp/backlight_capture.log` on Linux and macOS, and `C:/Program Files/BacklightCapture/backlight_capture.log` on Windows.
-
 ## Contributing
 
 1. Fork the repository.
