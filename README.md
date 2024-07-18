@@ -1,8 +1,8 @@
-# BacklightCapture
+# LightFrame
 
 ## Overview
 
-BacklightCapture is a cross-platform utility to capture the screen and adjust an LED strip's colors accordingly. It supports various platforms including Linux (both X11 and Wayland), macOS, and Windows. The utility reads the screen, calculates the average color of different screen segments, and sends this data over a serial connection to control an LED strip behind an ESP8266 that runs [light_frame_receiver](https://github.com/stephanballer/light_frame_receiver).
+LightFrame is a cross-platform utility to capture the screen and adjust an LED strip's colors accordingly. It supports various platforms including Linux (both X11 and Wayland), macOS, and Windows. The utility reads the screen, calculates the average color of different screen segments, and sends this data over a serial connection to control an LED strip behind an ESP8266 that runs [light_frame_receiver](https://github.com/stephanballer/light_frame_receiver).
 
 ## Features
 
@@ -50,8 +50,8 @@ brew install cmake opencv
 1. **Clone the Repository**:
 
    ```sh
-   git clone https://github.com/yourusername/backlightcapture.git
-   cd backlightcapture
+   git clone https://github.com/stephanballer/light_frame.git
+   cd light_frame
    ```
 
 2. **Create a Build Directory**:
