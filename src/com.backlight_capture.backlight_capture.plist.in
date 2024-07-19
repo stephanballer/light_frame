@@ -3,18 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.backlight_capture.screen_capture</string>
+    <string>com.backlight_capture.backlight_capture</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/backlight_capture</string>
+        <string>/Library/Application Support/BacklightCapture/backlight_capture</string>
+        <string>/dev/cu.usbserial-FTB6SPL3</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/screen_capture.out</string>
+    <string>/tmp/backlight_capture.out</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/screen_capture.err</string>
+    <string>/tmp/backlight_capture.err</string>
 </dict>
 </plist>

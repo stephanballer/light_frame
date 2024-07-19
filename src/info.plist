@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.backlight_capture.backlight_capture</string>
+    <key>CFBundleName</key>
+    <string>BacklightCapture</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>backlight_capture</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This application requires access to the microphone for screen recording.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>This application requires access to the camera for screen recording.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>This application needs permission to control other apps for screen recording purposes.</string>
+</dict>
+</plist>

@@ -1,0 +1,2 @@
+@echo off
+start /B "" "%~dp0backlight_capture.exe"
