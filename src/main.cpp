@@ -33,12 +33,6 @@ int border_thickness = 32;
 int skip_pixels_during_average = 4;
 int max_millis = 1000 / 5;
 double brightness = 0.2;
-#ifdef USE_X11
-char *output_device = ":0";
-#endif
-#ifdef USE_WAYLAND
-char *output_device = NULL;
-#endif
 
 
 int serial_fd;
@@ -111,8 +105,8 @@ void send_colors(cv::Scalar* leftColors, cv::Scalar* rightColors, cv::Scalar* to
 
 // Capture function definitions based on the platform
 #ifdef USE_X11
-cv::Mat captureScreen() {
-    Display* display = XOpenDisplay(output_device);
+cv::Mat captureScreen(const char *x_display) {
+    Display* display = XOpenDisplay(x_display);
     if (!display) {
         fprintf(stderr, "Failed to open X display\n");
         exit(EXIT_FAILURE);
@@ -144,18 +138,13 @@ cv::Mat captureScreen() {
 #endif
 
 #ifdef USE_WAYLAND
-cv::Mat captureScreen() {
+cv::Mat captureScreen(const char *wl_display, const char *uid) {
     // Open a pipe to grim
     std::ostringstream buffer;
-    if (output_device != NULL) {
-      buffer << "grim -t ppm -o " << output_device << " -";
-    }
-    else {
-      buffer << "grim -t ppm -";
-    }
+    buffer << "WAYLAND_DISPLAY=" << wl_display << " XDG_RUNTIME_DIR=/run/user/" << uid << " grim -t ppm -";
     std::string bufferStr = buffer.str();
 
-    FILE* pipe = popen(buffer.c_str(), "r");
+    FILE* pipe = popen(bufferStr.c_str(), "r");
     if (!pipe) {
         fprintf(stderr, "Failed to open pipe to grim\n");
         exit(EXIT_FAILURE);
@@ -257,10 +246,10 @@ cv::Mat captureScreen() {
     CGContextRelease(contextRef);
     CGImageRelease(screenImage);
 
-    cv::Mat mat_bgr;
-    cvtColor(mat, mat_bgr, cv::COLOR_RGBA2BGR); // Convert to BGR
+    //cv::Mat mat_bgr;
+    //cvtColor(mat, mat_bgr, cv::COLOR_RGBA2BGR); // Convert to BGR
 
-    return mat_bgr;
+    return mat;
 }
 #endif
 
@@ -317,6 +306,25 @@ long currentMillis() {
 	return tp.tv_sec * 1000 + tp.tv_usec / 1000;
 }
 
+#if defined USE_WAYLAND || defined USE_X11
+std::string exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+
+    // Define the type for the deleter
+    using pipe_ptr = std::unique_ptr<FILE, int(*)(FILE*)>;
+
+    pipe_ptr pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
+#endif
+
 int main(int argc, char *argv[]) {
     const char *help = "Usage: %s <serial_device>\n\n"
                        "Options:\n"
@@ -359,11 +367,6 @@ int main(int argc, char *argv[]) {
         else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--max-fps")) {
             max_millis = (int)(1000.0/atof(argv[i+1]));
         }
-#if defined USE_X11 || defined USE_WAYLAND
-        else if (!strcmp(argv[i], "-o") || !strcmp(argv[i], "--output")) {
-            output_device = argv[i+1];
-        }
-#endif
         else {
             fprintf(stderr, help, argv[0]);
         }
@@ -371,10 +374,32 @@ int main(int argc, char *argv[]) {
 
     init_serial(argv[1]);
 
+    #ifdef USE_X11
+    std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");
+    x_display.erase(x_display.find_last_not_of(" \n\r\t")+1);
+    #endif
+
+    #ifdef USE_WAYLAND
+    std::string uid = exec("ps aux | grep -m1 'sway\\|wayland' | awk '{print $1}' | xargs id -u");
+    uid.erase(uid.find_last_not_of(" \n\r\t")+1);
+    std::stringstream wl_display_cmd;
+    wl_display_cmd << "ls /run/user/" << uid << "/wayland-* | head -n 1 | xargs basename";
+    std::string wl_display = exec(wl_display_cmd.str().c_str());
+    wl_display.erase(wl_display.find_last_not_of(" \n\r\t")+1);
+    #endif
+
     while (1) {
         long start = currentMillis();
 
+        #ifdef USE_X11
+        cv::Mat img = captureScreen(x_display.c_str());
+        #endif
+        #ifdef USE_WAYLAND
+        cv::Mat img = captureScreen(wl_display.c_str(), uid.c_str());
+        #endif
+        #if not (defined USE_X11 || defined USE_WAYLAND)
         cv::Mat img = captureScreen();
+        #endif
         calculateAverageColors(img);
 
         long duration = currentMillis() - start;

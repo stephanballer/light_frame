@@ -118,7 +118,6 @@ backlight_capture /dev/ttyUSBX -H 21 -V 9 -t 32 -s 4 -b 0.2 -f 60
 - `-s`, `--skip-pixels`: Number of pixels to skip while calculating average color
 - `-b`, `--brightness`: LED brightness
 - `-f`, `--max-fps`: Maximum frames per second
-- `-o`, `--output-display`: Output display (for X11 and Wayland)
 
 ## Contributing
 

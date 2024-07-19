@@ -1,2 +1,0 @@
-@echo off
-start /B "" "%~dp0ScreenCapture.exe"
