@@ -46,7 +46,7 @@ std::map<std::string, std::string> defaultConfig = {
     {"add_vertical", "0"},
     {"border_thickness", "32"},
     {"skip_pixels_during_average", "4"},
-    {"max_millis", "200"},
+    {"max_fps", "5"},
     {"brightness", "0.2"}};
 
 int num_leds_vertical;
@@ -55,7 +55,7 @@ int add_horizontal;
 int add_vertical;
 int border_thickness;
 int skip_pixels_during_average;
-int max_millis;
+int min_millis;
 double brightness;
 
 int serial_fd;
@@ -473,7 +473,7 @@ void readConfig(const std::string &configPath, std::map<std::string, std::string
     add_vertical = getValueOrDefault(config, "add_vertical", std::stoi(defaultConfig["add_vertical"]));
     border_thickness = getValueOrDefault(config, "border_thickness", std::stoi(defaultConfig["border_thickness"]));
     skip_pixels_during_average = getValueOrDefault(config, "skip_pixels_during_average", std::stoi(defaultConfig["skip_pixels_during_average"]));
-    max_millis = getValueOrDefault(config, "max_millis", std::stoi(defaultConfig["max_millis"]));
+    min_millis = (int)(1000.0/getValueOrDefault(config, "max_fps", std::stoi(defaultConfig["max_fps"])));
     brightness = getValueOrDefault(config, "brightness", std::stod(defaultConfig["brightness"]));
 }
 
@@ -511,7 +511,7 @@ void overrideConfigWithArgs(int argc, char *argv[])
         }
         else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--max-fps"))
         {
-            max_millis = (int)(1000.0 / atof(argv[i + 1]));
+            min_millis = (int)(1000.0 / atof(argv[i + 1]));
         }
         else
         {
@@ -606,9 +606,9 @@ int main(int argc, char *argv[])
 
         long duration = currentMillis() - start;
 
-        if (duration < max_millis)
+        if (duration < min_millis)
         {
-            usleep((max_millis - duration) * 1000);
+            usleep((min_millis - duration) * 1000);
         }
 
         // printf("FPS: %d\n", 1000 / (currentMillis() - start));
