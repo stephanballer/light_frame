@@ -133,7 +133,11 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     buffer << "\n";
 
     std::string bufferStr = buffer.str();
-    write(serial_fd, bufferStr.c_str(), bufferStr.length());
+    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0) 
+    {
+        close(serial_fd);
+        exit(0);
+    }
 }
 
 // Capture function definitions based on the platform
