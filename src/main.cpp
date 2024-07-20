@@ -8,6 +8,19 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fstream>
+#include <iostream>
+#include <cerrno>
+#include <cstring>
+#include <sstream>
+#include <array>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <map>
 
 #ifdef USE_X11
 #include <X11/Xlib.h>
@@ -26,18 +39,26 @@
 #include <ApplicationServices/ApplicationServices.h>
 #endif
 
-int num_leds_vertical = 9;
-int num_leds_horizontal = 21;
-int add_horizontal = 0;
-int add_vertical = 0;
-int border_thickness = 32;
-int skip_pixels_during_average = 4;
-int max_millis = 1000 / 5;
-double brightness = 0.2;
+std::map<std::string, std::string> defaultConfig = {
+    {"num_leds_vertical", "9"},
+    {"num_leds_horizontal", "21"},
+    {"add_horizontal", "0"},
+    {"add_vertical", "0"},
+    {"border_thickness", "32"},
+    {"skip_pixels_during_average", "4"},
+    {"max_millis", "200"},
+    {"brightness", "0.2"}};
+
+int num_leds_vertical;
+int num_leds_horizontal;
+int add_horizontal;
+int add_vertical;
+int border_thickness;
+int skip_pixels_during_average;
+int max_millis;
+double brightness;
 
 int serial_fd;
-
-// g++ -o screenshot_leds_grim_serial screenshot_leds_grim_serial.c $(pkg-config --cflags --libs opencv4)
 
 // Function to initialize serial communication
 void init_serial(const char *port)
@@ -358,33 +379,105 @@ std::string exec(const char *cmd)
 }
 #endif
 
-int main(int argc, char *argv[])
+template <typename T>
+T getValueOrDefault(const std::map<std::string, std::string> &config, const std::string &key, const T &defaultValue)
 {
-    const char *help = "Usage: %s <serial_device>\n\n"
-                       "Options:\n"
-                       "  -h,  --help              print this help\n"
-                       "  -H,  --horizontal-leds   number of horizontal leds\n"
-                       "  -aH, --add-horizontal    add virtual leds left and right\n"
-                       "  -V,  --vertical-leds     number of vertical leds\n"
-                       "  -aV, --add-vertical      add virtual leds top and bottom\n"
-                       "  -t,  --border-thickness  border thickness while calculating average color\n"
-                       "  -s,  --step-size         step size while calculating average color\n"
-                       "  -b,  --brightness        led brightness\n"
-                       "  -f,  --max-fps           maximum frames per second\n";
-
-    if (argc < 2)
+    try
     {
-        fprintf(stderr, help, argv[0]);
-        return 1;
+        if constexpr (std::is_same_v<T, int>)
+        {
+            return std::stoi(config.at(key));
+        }
+        else if constexpr (std::is_same_v<T, double>)
+        {
+            return std::stod(config.at(key));
+        }
+        else
+        {
+            return config.at(key);
+        }
     }
+    catch (...)
+    {
+        return defaultValue;
+    }
+}
+
+void createDirectoryIfNotExists(const std::string &dirPath)
+{
+    struct stat st;
+    if (stat(dirPath.c_str(), &st) != 0)
+    {
+        // Directory does not exist, create it
+        if (mkdir(dirPath.c_str(), 0755) != 0)
+        {
+            std::cerr << "Error: Could not create directory " << dirPath << std::endl;
+            exit(1);
+        }
+    }
+    else if (!S_ISDIR(st.st_mode))
+    {
+        std::cerr << "Error: " << dirPath << " exists but is not a directory" << std::endl;
+        exit(1);
+    }
+}
+
+void readConfig(const std::string &configPath, std::map<std::string, std::string> &config)
+{
+    std::ifstream configFile(configPath);
+
+    if (configFile.is_open())
+    {
+        std::string line;
+        while (std::getline(configFile, line))
+        {
+            std::istringstream is_line(line);
+            std::string key;
+            if (std::getline(is_line, key, '='))
+            {
+                std::string value;
+                if (std::getline(is_line, value))
+                {
+                    config[key] = value;
+                }
+            }
+        }
+    }
+    else
+    {
+        // Ensure the directory exists
+        std::string dirPath = configPath.substr(0, configPath.find_last_of('/'));
+        createDirectoryIfNotExists(dirPath);
+
+        std::ofstream newConfigFile(configPath);
+        if (!newConfigFile.is_open())
+        {
+            std::cerr << "Error: Could not create configuration file at " << configPath << std::endl;
+            exit(1);
+        }
+        for (const auto &pair : defaultConfig)
+        {
+            newConfigFile << pair.first << "=" << pair.second << std::endl;
+            config[pair.first] = pair.second;
+        }
+    }
+
+    // Set the configuration values using the helper function
+    num_leds_vertical = getValueOrDefault(config, "num_leds_vertical", std::stoi(defaultConfig["num_leds_vertical"]));
+    num_leds_horizontal = getValueOrDefault(config, "num_leds_horizontal", std::stoi(defaultConfig["num_leds_horizontal"]));
+    add_horizontal = getValueOrDefault(config, "add_horizontal", std::stoi(defaultConfig["add_horizontal"]));
+    add_vertical = getValueOrDefault(config, "add_vertical", std::stoi(defaultConfig["add_vertical"]));
+    border_thickness = getValueOrDefault(config, "border_thickness", std::stoi(defaultConfig["border_thickness"]));
+    skip_pixels_during_average = getValueOrDefault(config, "skip_pixels_during_average", std::stoi(defaultConfig["skip_pixels_during_average"]));
+    max_millis = getValueOrDefault(config, "max_millis", std::stoi(defaultConfig["max_millis"]));
+    brightness = getValueOrDefault(config, "brightness", std::stod(defaultConfig["brightness"]));
+}
+
+void overrideConfigWithArgs(int argc, char *argv[])
+{
     for (int i = 2; i < argc; i += 2)
     {
-        if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
-        {
-            printf(help, argv[0]);
-            exit(0);
-        }
-        else if (!strcmp(argv[i], "-H") || !strcmp(argv[i], "--horizontal-leds"))
+        if (!strcmp(argv[i], "-H") || !strcmp(argv[i], "--horizontal-leds"))
         {
             num_leds_horizontal = atoi(argv[i + 1]);
         }
@@ -418,10 +511,63 @@ int main(int argc, char *argv[])
         }
         else
         {
+            const char *help = "Usage: %s <serial_device>\n\n"
+                               "Options:\n"
+                               "  -h,  --help              print this help\n"
+                               "  -H,  --horizontal-leds   number of horizontal leds\n"
+                               "  -aH, --add-horizontal    add virtual leds left and right\n"
+                               "  -V,  --vertical-leds     number of vertical leds\n"
+                               "  -aV,  --add-vertical      add virtual leds top and bottom\n"
+                               "  -t,  --border-thickness  border thickness while calculating average color\n"
+                               "  -s,  --skip-pixels       step size while calculating average color\n"
+                               "  -b,  --brightness        led brightness\n"
+                               "  -f,  --max-fps           maximum frames per second\n";
+
             fprintf(stderr, help, argv[0]);
-            return 1;
+            exit(1);
         }
     }
+}
+
+int main(int argc, char *argv[])
+{
+    const char *help = "Usage: %s <serial_device>\n\n"
+                       "Options:\n"
+                       "  -h,  --help              print this help\n"
+                       "  -H,  --horizontal-leds   number of horizontal leds\n"
+                       "  -aH, --add-horizontal    add virtual leds left and right\n"
+                       "  -V,  --vertical-leds     number of vertical leds\n"
+                       "  -aV, --add-vertical      add virtual leds top and bottom\n"
+                       "  -t,  --border-thickness  border thickness while calculating average color\n"
+                       "  -s,  --skip-pixels       step size while calculating average color\n"
+                       "  -b,  --brightness        led brightness\n"
+                       "  -f,  --max-fps           maximum frames per second\n";
+
+    if (argc < 2)
+    {
+        fprintf(stderr, help, argv[0]);
+        return 1;
+    }
+
+    if (argc == 2 && (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")))
+    {
+        printf(help, argv[0]);
+        exit(0);
+    }
+
+    std::string configPath;
+
+#ifdef _WIN32
+    configPath = "C:\\ProgramData\\BacklightCapture\\config.txt";
+#elif __APPLE__
+    configPath = "/Library/Application Support/BacklightCapture/config.txt";
+#else
+    configPath = "/etc/backlightcapture/config.txt";
+#endif
+
+    std::map<std::string, std::string> config;
+    readConfig(configPath, config);
+    overrideConfigWithArgs(argc, argv);
 
     init_serial(argv[1]);
 

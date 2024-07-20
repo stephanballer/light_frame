@@ -106,7 +106,13 @@ Replace `/dev/ttyUSBX` with the appropriate serial device.
 
 ## Configuration
 
-You can configure the number of LEDs and other parameters via command-line arguments. For example:
+You can configure the number of LEDs and other parameters via the config file:
+
+- Linux: _/etc/backlight_capture/config.txt_
+- Macos: _/Library/Application Support/BacklightCapture/config.txt_
+- Windows: _C:\\ProgramData\\BacklightCapture\\config.txt_
+  
+or via command-line arguments. For example:
 
 ```sh
 backlight_capture /dev/ttyUSBX -H 21 -aH 1 -V 9 -aV 0 -t 32 -s 4 -b 0.2 -f 60
