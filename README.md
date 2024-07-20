@@ -109,11 +109,13 @@ Replace `/dev/ttyUSBX` with the appropriate serial device.
 You can configure the number of LEDs and other parameters via command-line arguments. For example:
 
 ```sh
-backlight_capture /dev/ttyUSBX -H 21 -V 9 -t 32 -s 4 -b 0.2 -f 60
+backlight_capture /dev/ttyUSBX -H 21 -aH 1 -V 9 -aV 0 -t 32 -s 4 -b 0.2 -f 60
 ```
 
-- `-H`, `--horizontal-leds`: Number of horizontal LEDs (including 2 corner LEDs of vertical strip)
+- `-H`, `--horizontal-leds`: Number of horizontal LEDs
+- `-aH`, `--add-horizontal`: Add virtual LEDs left and right
 - `-V`, `--vertical-leds`: Number of vertical LEDs
+- `-aV`, `--add-vertical`: Add virtual LEDs top and bottom
 - `-t`, `--border-thickness`: Border thickness while calculating average color
 - `-s`, `--skip-pixels`: Number of pixels to skip while calculating average color
 - `-b`, `--brightness`: LED brightness
@@ -138,4 +140,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [X11](https://www.x.org/wiki/)
 - [Wayland](https://wayland.freedesktop.org/)
 - [Grim](https://github.com/emersion/grim)
-```
