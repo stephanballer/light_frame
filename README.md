@@ -127,6 +127,11 @@ backlight_capture /dev/ttyUSBX -H 21 -aH 1 -V 9 -aV 0 -t 32 -s 4 -b 0.2 -f 60
 - `-b`, `--brightness`: LED brightness
 - `-f`, `--max-fps`: Maximum frames per second
 
+## In progress
+
+- DPMS support for MacOS and X11
+- Windows support
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
