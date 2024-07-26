@@ -127,14 +127,6 @@ backlight_capture /dev/ttyUSBX -H 21 -aH 1 -V 9 -aV 0 -t 32 -s 4 -b 0.2 -f 60
 - `-b`, `--brightness`: LED brightness
 - `-f`, `--max-fps`: Maximum frames per second
 
-## Contributing
-
-1. Fork the repository.
-2. Create your feature branch: `git checkout -b feature/my-feature`.
-3. Commit your changes: `git commit -am 'Add some feature'`.
-4. Push to the branch: `git push origin feature/my-feature`.
-5. Open a pull request.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
