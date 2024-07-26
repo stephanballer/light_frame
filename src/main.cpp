@@ -60,6 +60,39 @@ double brightness;
 
 int serial_fd;
 
+bool check_serial_connection(int fd)
+{
+    fd_set read_fds;
+    struct timeval timeout;
+    char buffer;
+
+    // Initialize the file descriptor set
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+
+    // Set the timeout to 0, so select returns immediately
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    int result = select(fd + 1, &read_fds, NULL, NULL, &timeout);
+    if (result < 0)
+    {
+        return false;
+    }
+
+    if (FD_ISSET(fd, &read_fds))
+    {
+        // Try reading a single byte to check the connection
+        int n = read(fd, &buffer, 1);
+        if (n < 0)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Function to initialize serial communication
 void init_serial(const char *port)
 {
@@ -129,24 +162,6 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     for (int i = num_leds_vertical - 1; i >= 0; i--)
     {
         buffer << index++ << ":" << (int)leftColors[i][0] << "," << (int)leftColors[i][1] << "," << (int)leftColors[i][2] << ";";
-    }
-    buffer << "\n";
-
-    std::string bufferStr = buffer.str();
-    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
-    {
-        close(serial_fd);
-        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-}
-
-void send_black()
-{
-    std::ostringstream buffer;
-    for (int i = 0; i < num_leds_horizontal; i++)
-    {
-        buffer << i++ << ":0,0,0;";
     }
     buffer << "\n";
 
@@ -625,6 +640,13 @@ int main(int argc, char *argv[])
     while (1)
     {
         long start = currentMillis();
+
+        if (!check_serial_connection(serial_fd))
+        {
+            fprintf(stderr, "Serial device disconnected. Exiting...\n");
+            close(serial_fd);
+            exit(EXIT_FAILURE);
+        }
 
 #ifdef USE_X11
         cv::Mat img = captureScreen(x_display.c_str());
