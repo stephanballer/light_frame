@@ -41,13 +41,22 @@ elseif (APPLE)
     install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
 
     set(PLIST_FILE "${CMAKE_BINARY_DIR}/com.backlight_capture.backlight_capture.plist")
+    set(BASH_FILE "${CMAKE_SOURCE_DIR}/src/backlight_capture.sh")
 
-    set_target_properties(backlight_capture PROPERTIES
-    MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/src/info.plist
-)
+    set_target_properties(
+      backlight_capture PROPERTIES
+      MACOSX_BUNDLE TRUE
+      MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/src/info.plist
+      )
     configure_file(${CMAKE_SOURCE_DIR}/src/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
     install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchDaemons)
+    if (NOT EXISTS "/Library/Application Support/BacklightCapture/backlight_capture.sh")
+      install(
+        FILES ${BASH_FILE}
+        PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+        DESTINATION /Library/Application\ Support/BacklightCapture
+        )
+    endif()
 endif()
 
 if (UNIX AND NOT APPLE)
@@ -60,8 +69,8 @@ if (UNIX AND NOT APPLE)
     file(APPEND ${SYSTEMD_SERVICE_FILE} "After=network.target\n\n")
     file(APPEND ${SYSTEMD_SERVICE_FILE} "[Service]\n")
     file(APPEND ${SYSTEMD_SERVICE_FILE} "ExecStart=/usr/bin/backlight_capture /dev/%I\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardOutput=append:/tmp/backlight_capture.log\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardError=append:/tmp/backlight_capture.log\n\n")
+    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardOutput=append:/var/log/backlight_capture.log\n")
+    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardError=append:/var/log/backlight_capture.log\n\n")
     file(APPEND ${SYSTEMD_SERVICE_FILE} "[Install]\n")
     file(APPEND ${SYSTEMD_SERVICE_FILE} "WantedBy=multi-user.target\n")
 

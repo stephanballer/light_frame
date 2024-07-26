@@ -6,16 +6,18 @@
     <string>com.backlight_capture.backlight_capture</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Library/Application Support/BacklightCapture/backlight_capture</string>
-        <string>/dev/cu.usbserial-FTB6SPL3</string>
+      <string>/Library/Application Support/BacklightCapture/backlight_capture.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/backlight_capture.out</string>
+    <string>/var/log/backlight_capture.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/backlight_capture.err</string>
+    <string>/var/log/backlight_capture.log</string>
 </dict>
 </plist>

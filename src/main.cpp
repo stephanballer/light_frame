@@ -110,11 +110,6 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     std::ostringstream buffer;
     int index = 0;
 
-    // left
-    for (int i = num_leds_vertical - 1; i >= 0; i--)
-    {
-        buffer << index++ << ":" << (int)leftColors[i][0] << "," << (int)leftColors[i][1] << "," << (int)leftColors[i][2] << ";";
-    }
     // top
     for (int i = 0; i < num_leds_horizontal; i++)
     {
@@ -130,13 +125,37 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     {
         buffer << index++ << ":" << (int)bottomColors[i][0] << "," << (int)bottomColors[i][1] << "," << (int)bottomColors[i][2] << ";";
     }
+    // left
+    for (int i = num_leds_vertical - 1; i >= 0; i--)
+    {
+        buffer << index++ << ":" << (int)leftColors[i][0] << "," << (int)leftColors[i][1] << "," << (int)leftColors[i][2] << ";";
+    }
     buffer << "\n";
 
     std::string bufferStr = buffer.str();
-    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0) 
+    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
     {
         close(serial_fd);
-        exit(0);
+        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+}
+
+void send_black()
+{
+    std::ostringstream buffer;
+    for (int i = 0; i < num_leds_horizontal; i++)
+    {
+        buffer << i++ << ":0,0,0;";
+    }
+    buffer << "\n";
+
+    std::string bufferStr = buffer.str();
+    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
+    {
+        close(serial_fd);
+        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -201,14 +220,14 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     {
         fprintf(stderr, "Failed to read PPM header\n");
         pclose(pipe);
-        exit(EXIT_FAILURE);
+        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
     }
 
     if (strncmp(header, "P6", 2) != 0)
     {
         fprintf(stderr, "Invalid PPM header\n");
         pclose(pipe);
-        exit(EXIT_FAILURE);
+        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
     }
 
     // Read width, height, and maxval
@@ -216,7 +235,7 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     {
         fprintf(stderr, "Invalid PPM header format\n");
         pclose(pipe);
-        exit(EXIT_FAILURE);
+        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
     }
 
     // Allocate memory for the image
@@ -388,11 +407,11 @@ T getValueOrDefault(const std::map<std::string, std::string> &config, const std:
 {
     try
     {
-        if constexpr (std::is_same_v<T, int>)
+        if constexpr (std::is_same<T, int>::value)
         {
             return std::stoi(config.at(key));
         }
-        else if constexpr (std::is_same_v<T, double>)
+        else if constexpr (std::is_same<T, double>::value)
         {
             return std::stod(config.at(key));
         }
@@ -409,6 +428,17 @@ T getValueOrDefault(const std::map<std::string, std::string> &config, const std:
 
 void createDirectoryIfNotExists(const std::string &dirPath)
 {
+#ifdef _WIN32
+    if (CreateDirectory(dirPath.c_str(), NULL) || ERROR_ALREADY_EXISTS == GetLastError())
+    {
+        std::cout << "Directory created or already exists: " << dirPath << std::endl;
+    }
+    else
+    {
+        std::cerr << "Error: Could not create directory " << dirPath << " - " << GetLastError() << std::endl;
+        exit(1);
+    }
+#else
     struct stat st;
     if (stat(dirPath.c_str(), &st) != 0)
     {
@@ -424,6 +454,7 @@ void createDirectoryIfNotExists(const std::string &dirPath)
         std::cerr << "Error: " << dirPath << " exists but is not a directory" << std::endl;
         exit(1);
     }
+#endif
 }
 
 void readConfig(const std::string &configPath, std::map<std::string, std::string> &config)
@@ -457,7 +488,7 @@ void readConfig(const std::string &configPath, std::map<std::string, std::string
         if (!newConfigFile.is_open())
         {
             std::cerr << "Error: Could not create configuration file at " << configPath << std::endl;
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         for (const auto &pair : defaultConfig)
         {
@@ -473,7 +504,7 @@ void readConfig(const std::string &configPath, std::map<std::string, std::string
     add_vertical = getValueOrDefault(config, "add_vertical", std::stoi(defaultConfig["add_vertical"]));
     border_thickness = getValueOrDefault(config, "border_thickness", std::stoi(defaultConfig["border_thickness"]));
     skip_pixels_during_average = getValueOrDefault(config, "skip_pixels_during_average", std::stoi(defaultConfig["skip_pixels_during_average"]));
-    min_millis = (int)(1000.0/getValueOrDefault(config, "max_fps", std::stoi(defaultConfig["max_fps"])));
+    min_millis = (int)(1000.0 / getValueOrDefault(config, "max_fps", std::stoi(defaultConfig["max_fps"])));
     brightness = getValueOrDefault(config, "brightness", std::stod(defaultConfig["brightness"]));
 }
 
@@ -528,7 +559,7 @@ void overrideConfigWithArgs(int argc, char *argv[])
                                "  -f,  --max-fps           maximum frames per second\n";
 
             fprintf(stderr, help, argv[0]);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 }
@@ -571,9 +602,11 @@ int main(int argc, char *argv[])
 
     std::map<std::string, std::string> config;
     readConfig(configPath, config);
+    printf("Loaded config\n");
     overrideConfigWithArgs(argc, argv);
 
     init_serial(argv[1]);
+    printf("Serial connection established\n");
 
 #ifdef USE_X11
     std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");
