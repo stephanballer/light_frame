@@ -50,13 +50,11 @@ elseif (APPLE)
       )
     configure_file(${CMAKE_SOURCE_DIR}/src/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
     install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchDaemons)
-    if (NOT EXISTS "/Library/Application Support/BacklightCapture/backlight_capture.sh")
-      install(
-        FILES ${BASH_FILE}
-        PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
-        DESTINATION /Library/Application\ Support/BacklightCapture
-        )
-    endif()
+    install(
+      FILES ${BASH_FILE}
+      PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+      DESTINATION /Library/Application\ Support/BacklightCapture
+      )
 endif()
 
 if (UNIX AND NOT APPLE)
