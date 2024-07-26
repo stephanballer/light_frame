@@ -12,7 +12,8 @@ LightFrame is a cross-platform utility to capture the screen and adjust an LED s
 - Serial communication to send color data
 - Automatically starts on device connection using udev rules (Linux)
 
-## 
+## Requirements
+
 - CMake 3.10 or higher
 - OpenCV
 - X11 libraries (for X11 support)
