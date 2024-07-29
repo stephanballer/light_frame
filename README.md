@@ -12,12 +12,12 @@ LightFrame is a cross-platform utility to capture the screen and adjust an LED s
 - Serial communication to send color data
 - Automatically starts on device connection using udev rules (Linux)
 
-## Requirements
-
+## 
 - CMake 3.10 or higher
 - OpenCV
 - X11 libraries (for X11 support)
-- Grim (for Wayland support)
+- Wayland and Grim (for Wayland support)
+- Serial communication libraries
 
 ## Installation
 
@@ -126,11 +126,6 @@ backlight_capture /dev/ttyUSBX -H 21 -aH 1 -V 9 -aV 0 -t 32 -s 4 -b 0.2 -f 60
 - `-s`, `--skip-pixels`: Number of pixels to skip while calculating average color
 - `-b`, `--brightness`: LED brightness
 - `-f`, `--max-fps`: Maximum frames per second
-
-## In progress
-
-- DPMS support for MacOS and X11
-- Windows support
 
 ## License
 
