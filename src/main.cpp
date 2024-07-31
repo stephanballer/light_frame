@@ -37,7 +37,11 @@
 #endif
 
 #ifdef __APPLE__
+#include <IOKit/IOKitLib.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
+#include <IOKit/IOMessage.h>
 #include <ApplicationServices/ApplicationServices.h>
+#include <pthread.h>
 #endif
 
 std::map<std::string, std::string> defaultConfig = {
@@ -62,6 +66,10 @@ char *port;
 bool blank = false;
 
 int serial_fd;
+#ifdef __APPLE__
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static io_connect_t root_port;
+#endif
 
 bool check_serial_connection(int fd)
 {
@@ -172,7 +180,7 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
     {
         close(serial_fd);
-        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        fprintf(stderr, "Serial error occurred. Exiting...\n");
         exit(EXIT_FAILURE);
     }
 }
@@ -191,7 +199,7 @@ void send_black()
     if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
     {
         close(serial_fd);
-        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        fprintf(stderr, "Serial error occurred. Exiting...\n");
         exit(EXIT_FAILURE);
     }
 }
@@ -607,6 +615,45 @@ void overrideConfigWithArgs(int argc, char *argv[])
     }
 }
 
+#ifdef __APPLE__
+void powerCallback(void *refCon, io_service_t service, natural_t messageType, void *messageArgument) {
+    switch (messageType) {
+        case kIOMessageSystemWillSleep:
+        case kIOMessageCanSystemSleep:
+        case kIOMessageSystemWillPowerOff:
+            std::cout << "Suspending LEDs...\n";
+            pthread_mutex_lock(&mutex);
+            send_black();
+            IOAllowPowerChange(root_port, (long)messageArgument);
+            break;
+        case kIOMessageSystemHasPoweredOn:
+            std::cout << "Resuming LEDs...\n";
+            pthread_mutex_unlock(&mutex);
+            break;
+        default:
+            break;
+    }
+}
+
+void* runLoopThread(void *arg) {
+      // Register for power notifications
+    IONotificationPortRef notifyPortRef;
+    io_object_t notifierObject;
+    root_port = IORegisterForSystemPower(nullptr, &notifyPortRef, powerCallback, &notifierObject);
+    if (root_port == 0) {
+        std::cerr << "IORegisterForSystemPower failed\n";
+        return NULL;
+    }
+
+    // Add the notification port to the run loop
+    CFRunLoopSourceRef runLoopSource = IONotificationPortGetRunLoopSource(notifyPortRef);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopDefaultMode);
+    CFRunLoopRun();
+
+    return NULL;
+}
+#endif
+
 void signalHandler(int signal) {
     std::cout << "Signal (" << signal << ") received.\n";
 
@@ -694,6 +741,11 @@ int main(int argc, char *argv[])
     wl_display.erase(wl_display.find_last_not_of(" \n\r\t") + 1);
 #endif
 
+#ifdef __APPLE__
+    pthread_t thread;
+    pthread_create(&thread, NULL, runLoopThread, NULL);
+#endif
+
     while (1)
     {
         long start = currentMillis();
@@ -714,7 +766,13 @@ int main(int argc, char *argv[])
 #if not(defined USE_X11 || defined USE_WAYLAND)
         cv::Mat img = captureScreen();
 #endif
+#ifdef __APPLE__
+        pthread_mutex_lock(&mutex);
+#endif
         calculateAverageColors(img);
+#ifdef __APPLE__
+        pthread_mutex_unlock(&mutex);
+#endif
 
         long duration = currentMillis() - start;
 

@@ -33,10 +33,18 @@ elseif (WIN32)
     configure_file(${CMAKE_SOURCE_DIR}/src/backlight_capture.bat.in ${CMAKE_BINARY_DIR}/backlight_capture.bat @ONLY)
     install(FILES ${CMAKE_BINARY_DIR}/backlight_capture.bat DESTINATION "C:/Program Files/BacklightCapture")
 elseif (APPLE)
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)
+
     target_compile_definitions(backlight_capture PRIVATE __APPLE__)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)
     find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
-    target_link_libraries(backlight_capture ${COREFOUNDATION_LIBRARY} ${APPLICATIONSERVICES_LIBRARY})
+
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation)
+    find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
+    find_library(IOKIT_LIBRARY IOKit)
+
+    target_link_libraries(backlight_capture ${COREFOUNDATION_LIBRARY} ${APPLICATIONSERVICES_LIBRARY} ${IOKIT_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
 
     install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
 
