@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <csignal>
 
 #ifdef USE_X11
 #include <X11/Xlib.h>
@@ -57,6 +58,8 @@ int border_thickness;
 int skip_pixels_during_average;
 int min_millis;
 double brightness;
+char *port;
+bool blank = false;
 
 int serial_fd;
 
@@ -94,7 +97,7 @@ bool check_serial_connection(int fd)
 }
 
 // Function to initialize serial communication
-void init_serial(const char *port)
+void init_serial()
 {
     serial_fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
     if (serial_fd < 0)
@@ -162,6 +165,25 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     for (int i = num_leds_vertical - 1; i >= 0; i--)
     {
         buffer << index++ << ":" << (int)leftColors[i][0] << "," << (int)leftColors[i][1] << "," << (int)leftColors[i][2] << ";";
+    }
+    buffer << "\n";
+
+    std::string bufferStr = buffer.str();
+    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
+    {
+        close(serial_fd);
+        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+}
+
+void send_black()
+{
+    std::ostringstream buffer;
+
+    for (int i = 0; i < 2 * (num_leds_horizontal + num_leds_vertical); i++)
+    {
+        buffer << i << ":0,0,0;";
     }
     buffer << "\n";
 
@@ -555,6 +577,11 @@ void overrideConfigWithArgs(int argc, char *argv[])
         {
             brightness = atof(argv[i + 1]);
         }
+        else if (!strcmp(argv[i], "-B") || !strcmp(argv[i], "--blank"))
+        {
+            i--;
+            blank = true;
+        }
         else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--max-fps"))
         {
             min_millis = (int)(1000.0 / atof(argv[i + 1]));
@@ -571,12 +598,31 @@ void overrideConfigWithArgs(int argc, char *argv[])
                                "  -t,  --border-thickness  border thickness while calculating average color\n"
                                "  -s,  --skip-pixels       step size while calculating average color\n"
                                "  -b,  --brightness        led brightness\n"
+                               "  -B,  --blank             blank leds\n"
                                "  -f,  --max-fps           maximum frames per second\n";
 
             fprintf(stderr, help, argv[0]);
             exit(EXIT_FAILURE);
         }
     }
+}
+
+void signalHandler(int signal) {
+    std::cout << "Signal (" << signal << ") received.\n";
+
+    if (check_serial_connection(serial_fd))
+    {
+        send_black();
+
+        close(serial_fd);
+    }
+    else {
+        std::cerr << "Serial device not accessible. Skipping send_black.\n";
+
+    }
+    std::cout << "Exit success.\n";
+
+    exit(EXIT_SUCCESS);
 }
 
 int main(int argc, char *argv[])
@@ -591,6 +637,7 @@ int main(int argc, char *argv[])
                        "  -t,  --border-thickness  border thickness while calculating average color\n"
                        "  -s,  --skip-pixels       step size while calculating average color\n"
                        "  -b,  --brightness        led brightness\n"
+                       "  -B,  --blank             blank leds\n"
                        "  -f,  --max-fps           maximum frames per second\n";
 
     if (argc < 2)
@@ -605,7 +652,11 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
     std::string configPath;
+    port = argv[1];
 
 #ifdef _WIN32
     configPath = "C:\\ProgramData\\BacklightCapture\\config.txt";
@@ -620,8 +671,14 @@ int main(int argc, char *argv[])
     printf("Loaded config\n");
     overrideConfigWithArgs(argc, argv);
 
-    init_serial(argv[1]);
+    init_serial();
     printf("Serial connection established\n");
+
+    if (blank) {
+        send_black();
+        close(serial_fd);
+        return 0;
+    }
 
 #ifdef USE_X11
     std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");

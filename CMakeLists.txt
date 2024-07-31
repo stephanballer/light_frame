@@ -61,18 +61,15 @@ if (UNIX AND NOT APPLE)
     set(UDEV_RULE "${CMAKE_BINARY_DIR}/99-backlight.rules")
     file(WRITE ${UDEV_RULE} "ACTION==\"add\", KERNEL==\"ttyUSB[0-9]*\", TAG+=\"systemd\", ENV{SYSTEMD_WANTS}=\"backlight_capture@%k.service\"\n")
     
-    set(SYSTEMD_SERVICE_FILE "${CMAKE_BINARY_DIR}/backlight_capture@.service")
-    file(WRITE ${SYSTEMD_SERVICE_FILE} "[Unit]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "Description=Backlight Capture Service\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "After=network.target\n\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "[Service]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "ExecStart=/usr/bin/backlight_capture /dev/%I\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardOutput=append:/var/log/backlight_capture.log\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardError=append:/var/log/backlight_capture.log\n\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "[Install]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "WantedBy=multi-user.target\n")
+    set(MAIN_SERVICE_FILE "${CMAKE_SOURCE_DIR}/src/backlight_capture@.service")
+    set(MANAGE_SCRIPT "${CMAKE_SOURCE_DIR}/src/manage-backlight-capture")
 
     install(TARGETS backlight_capture DESTINATION /usr/bin)
     install(FILES ${UDEV_RULE} DESTINATION /etc/udev/rules.d/)
-    install(FILES ${SYSTEMD_SERVICE_FILE} DESTINATION /etc/systemd/system/)
+    install(FILES ${MAIN_SERVICE_FILE} DESTINATION /etc/systemd/system/)
+    install(
+      FILES ${MANAGE_SCRIPT}
+      PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+      DESTINATION /usr/lib/systemd/system-sleep/
+    )
 endif()

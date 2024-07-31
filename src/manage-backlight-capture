@@ -1,0 +1,25 @@
+#!/bin/bash
+
+LOG_FILE="/var/log/backlight_capture.log"
+
+case $1 in
+pre)
+    # Stop all services that match the pattern "backlight_capture@*"
+    for service in $(systemctl list-units --type=service --state=active --no-legend | grep 'backlight_capture@' | awk '{print $1}'); do
+        systemctl stop "$service"
+        # Log the stopped service for potential restart
+        echo "$service" >> $LOG_FILE
+    done
+    ;;
+post)
+    # Start the last service logged before suspension
+    if [[ -f $LOG_FILE ]]; then
+        last_service=$(tail -n 1 "$LOG_FILE")
+        if [[ -n $last_service ]]; then
+            systemctl start "$last_service"
+        fi
+    else
+        echo "Log file not found: $LOG_FILE" >> $LOG
+    fi
+    ;;
+esac
