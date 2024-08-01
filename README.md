@@ -25,13 +25,15 @@ LightFrame is a cross-platform utility to capture the screen and adjust an LED s
 
 ```sh
 sudo apt update
-sudo apt install cmake libopencv-dev libx11-dev libwayland-client0 grim
+sudo apt install cmake libopencv-dev grim # For Wayland
+sudo apt install cmake libopencv-dev libx11-dev # For X11
 ```
 
 ### Arch Linux
 
 ```sh
-sudo pacman -S cmake opencv xorg-server-devel wayland grim
+sudo pacman -S cmake opencv grim # For Wayland
+sudo pacman -S cmake opencv xorg-server-devel # For X11
 ```
 
 ### macOS
