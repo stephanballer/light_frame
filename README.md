@@ -16,8 +16,7 @@ LightFrame is a cross-platform utility to capture the screen and adjust an LED s
 - CMake 3.10 or higher
 - OpenCV
 - X11 libraries (for X11 support)
-- Wayland and Grim (for Wayland support)
-- Serial communication libraries
+- Grim (for Wayland support)
 
 ## Installation
 
