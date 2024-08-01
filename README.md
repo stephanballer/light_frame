@@ -92,6 +92,7 @@ brew install cmake opencv
    ```sh
    sudo udevadm control --reload-rules
    sudo udevadm trigger
+   sudo systemctl daemon-reload
    ```
 
 ## Usage
