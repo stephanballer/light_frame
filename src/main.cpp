@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <future>
 
 #ifdef USE_X11
 #include <X11/Xlib.h>
@@ -169,7 +170,7 @@ void send_colors(std::vector<cv::Scalar> leftColors,
     if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
     {
         close(serial_fd);
-        fprintf(stderr, "Serial error occurred. Exiting...\n", strerror(errno));
+        fprintf(stderr, "Serial error occurred. Exiting...\n");
         exit(EXIT_FAILURE);
     }
 }
@@ -208,6 +209,10 @@ cv::Mat captureScreen(const char *x_display)
     XCloseDisplay(display);
 
     return mat_bgr;
+}
+
+std::future<cv::Mat> asyncCaptureScreen(const char* x_display) {
+    return std::async(std::launch::async, captureScreen, x_display);
 }
 #endif
 
@@ -269,6 +274,10 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     pclose(pipe);
     return img;
 }
+
+std::future<cv::Mat> asyncCaptureScreen(const char* wl_display, const char* uid) {
+    return std::async(std::launch::async, captureScreen, wl_display, uid);
+}
 #endif
 
 #ifdef _WIN32
@@ -301,11 +310,19 @@ cv::Mat captureScreen()
 
     return mat_bgr;
 }
+
+std::future<cv::Mat> asyncCaptureScreen() {
+    return std::async(std::launch::async, captureScreen);
+}
 #endif
 
 #ifdef __APPLE__
 cv::Mat captureScreen()
 {
+    if (CGDisplayIsAsleep(kCGDirectMainDisplay)) {
+        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
+    }
+
     CGImageRef screenImage = CGDisplayCreateImage(kCGDirectMainDisplay);
     if (!screenImage)
     {
@@ -335,6 +352,10 @@ cv::Mat captureScreen()
 
     return mat;
 }
+
+std::future<cv::Mat> asyncCaptureScreen() {
+    return std::async(std::launch::async, captureScreen);
+}
 #endif
 
 // Function to calculate the average color of a segment
@@ -343,12 +364,8 @@ cv::Scalar calculateSegmentAverage(const cv::Mat &img, int startX, int startY, i
     cv::Rect region(startX, startY, width, height);
     cv::Mat roi = img(region); // Region of interest
 
-    // Downsample the region to speed up the mean calculation
-    cv::Mat downsampled;
-    resize(roi, downsampled, cv::Size(), 1.0 / skip_pixels_during_average, 1.0 / skip_pixels_during_average, cv::INTER_NEAREST);
-
     // Calculate the mean color
-    cv::Scalar avgColor = mean(downsampled);
+    cv::Scalar avgColor = mean(roi);
 
     // Apply brightness
     avgColor[0] *= brightness;
@@ -359,7 +376,7 @@ cv::Scalar calculateSegmentAverage(const cv::Mat &img, int startX, int startY, i
 }
 
 // Function to calculate the average colors for all segments
-void calculateAverageColors(const cv::Mat &img)
+std::array<std::vector<cv::Scalar>, 4> calculateAverageColors(const cv::Mat &img)
 {
     int segmentHeight = img.rows / (num_leds_vertical + 2 * add_vertical);
     int segmentWidth = img.cols / (num_leds_horizontal + 2 * add_horizontal);
@@ -383,8 +400,7 @@ void calculateAverageColors(const cv::Mat &img)
         bottomColors[i] = calculateSegmentAverage(img, (i + add_horizontal) * segmentWidth, img.rows - border_thickness, segmentWidth, border_thickness);
     }
 
-    // Send colors over serial
-    send_colors(leftColors, rightColors, topColors, bottomColors);
+    return {leftColors, rightColors, topColors, bottomColors};
 }
 
 long currentMillis()
@@ -626,8 +642,9 @@ int main(int argc, char *argv[])
 #ifdef USE_X11
     std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");
     x_display.erase(x_display.find_last_not_of(" \n\r\t") + 1);
-#endif
 
+    std::future<cv::Mat> futureImg = asyncCaptureScreen(x_display.c_str());
+#endif
 #ifdef USE_WAYLAND
     std::string uid = exec("ps aux | grep -m1 'sway\\|wayland' | awk '{print $1}' | xargs id -u");
     uid.erase(uid.find_last_not_of(" \n\r\t") + 1);
@@ -635,6 +652,11 @@ int main(int argc, char *argv[])
     wl_display_cmd << "ls /run/user/" << uid << "/wayland-* | head -n 1 | xargs basename";
     std::string wl_display = exec(wl_display_cmd.str().c_str());
     wl_display.erase(wl_display.find_last_not_of(" \n\r\t") + 1);
+
+    std::future<cv::Mat> futureImg = asyncCaptureScreen(wl_display.c_str(), uid.c_str());
+#endif
+#if defined __APPLE__ || defined _WIN32
+    std::future<cv::Mat> futureImg = asyncCaptureScreen();
 #endif
 
     while (1)
@@ -649,15 +671,21 @@ int main(int argc, char *argv[])
         }
 
 #ifdef USE_X11
-        cv::Mat img = captureScreen(x_display.c_str());
+        cv::Mat img = futureImg.get();
+        futureImg = asyncCaptureScreen(x_display.c_str());
 #endif
 #ifdef USE_WAYLAND
-        cv::Mat img = captureScreen(wl_display.c_str(), uid.c_str());
+        cv::Mat img = futureImg.get();
+        futureImg = asyncCaptureScreen(wl_display.c_str(), uid.c_str());
 #endif
-#if not(defined USE_X11 || defined USE_WAYLAND)
-        cv::Mat img = captureScreen();
+#if defined __APPLE__ || defined _WIN32
+        cv::Mat img = futureImg.get();
+        futureImg = asyncCaptureScreen();
 #endif
-        calculateAverageColors(img);
+        auto colors = calculateAverageColors(img);
+
+        // Send colors over serial
+        send_colors(colors[0], colors[1], colors[2], colors[3]);
 
         long duration = currentMillis() - start;
 
