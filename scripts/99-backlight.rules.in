@@ -1,0 +1,1 @@
+ACTION=="add", KERNEL=="ttyUSB[0-9]*", TAG+="systemd", ENV{SYSTEMD_WANTS}="backlight_capture@%k.service"

@@ -30,7 +30,7 @@ elseif (WIN32)
 
     install(TARGETS backlight_capture DESTINATION "C:/Program Files/BacklightCapture")
 
-    configure_file(${CMAKE_SOURCE_DIR}/src/backlight_capture.bat.in ${CMAKE_BINARY_DIR}/backlight_capture.bat @ONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/scripts/backlight_capture.bat.in ${CMAKE_BINARY_DIR}/backlight_capture.bat @ONLY)
     install(FILES ${CMAKE_BINARY_DIR}/backlight_capture.bat DESTINATION "C:/Program Files/BacklightCapture")
 elseif (APPLE)
     target_compile_definitions(backlight_capture PRIVATE __APPLE__)
@@ -41,14 +41,17 @@ elseif (APPLE)
     install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
 
     set(PLIST_FILE "${CMAKE_BINARY_DIR}/com.backlight_capture.backlight_capture.plist")
-    set(BASH_FILE "${CMAKE_SOURCE_DIR}/src/backlight_capture.sh")
+    set(BASH_FILE "${CMAKE_BINARY_DIR}/backlight_capture.sh")
 
     set_target_properties(
       backlight_capture PROPERTIES
       MACOSX_BUNDLE TRUE
-      MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/src/info.plist
+      MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/scripts/info.plist
       )
-    configure_file(${CMAKE_SOURCE_DIR}/src/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
+
+    configure_file(${CMAKE_SOURCE_DIR}/scripts/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/scripts/backlight_capture.sh.in ${BASH_FILE} @ONLY)
+
     install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchDaemons)
     install(
       FILES ${BASH_FILE}
@@ -59,18 +62,10 @@ endif()
 
 if (UNIX AND NOT APPLE)
     set(UDEV_RULE "${CMAKE_BINARY_DIR}/99-backlight.rules")
-    file(WRITE ${UDEV_RULE} "ACTION==\"add\", KERNEL==\"ttyUSB[0-9]*\", TAG+=\"systemd\", ENV{SYSTEMD_WANTS}=\"backlight_capture@%k.service\"\n")
-    
     set(SYSTEMD_SERVICE_FILE "${CMAKE_BINARY_DIR}/backlight_capture@.service")
-    file(WRITE ${SYSTEMD_SERVICE_FILE} "[Unit]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "Description=Backlight Capture Service\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "After=network.target\n\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "[Service]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "ExecStart=/usr/bin/backlight_capture /dev/%I\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardOutput=append:/var/log/backlight_capture.log\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "StandardError=append:/var/log/backlight_capture.log\n\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "[Install]\n")
-    file(APPEND ${SYSTEMD_SERVICE_FILE} "WantedBy=multi-user.target\n")
+
+    configure_file(${CMAKE_SOURCE_DIR}/scripts/99-backlight.rules.in ${UDEV_RULE} @ONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/scripts/backlight_capture@.service.in ${SYSTEMD_SERVICE_FILE} @ONLY)
 
     install(TARGETS backlight_capture DESTINATION /usr/bin)
     install(FILES ${UDEV_RULE} DESTINATION /etc/udev/rules.d/)
