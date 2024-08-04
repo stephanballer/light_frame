@@ -181,7 +181,7 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
 {
     // Open a pipe to grim
     std::ostringstream buffer;
-    buffer << "WAYLAND_DISPLAY=" << wl_display << " XDG_RUNTIME_DIR=/run/user/" << uid << " grim -t ppm -";
+    buffer << "WAYLAND_DISPLAY=" << wl_display << " XDG_RUNTIME_DIR=/run/user/" << uid << " grim -t ppm - 2>/dev/null";
     std::string bufferStr = buffer.str();
 
     FILE *pipe = popen(bufferStr.c_str(), "r");
