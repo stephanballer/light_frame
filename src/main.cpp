@@ -135,46 +135,6 @@ void init_serial(const char *port)
     }
 }
 
-// Function to send color data over serial
-void send_colors(std::vector<cv::Scalar> leftColors,
-                 std::vector<cv::Scalar> rightColors,
-                 std::vector<cv::Scalar> topColors,
-                 std::vector<cv::Scalar> bottomColors)
-{
-    std::ostringstream buffer;
-    int index = 0;
-
-    // top
-    for (int i = 0; i < num_leds_horizontal; i++)
-    {
-        buffer << index++ << ":" << (int)topColors[i][0] << "," << (int)topColors[i][1] << "," << (int)topColors[i][2] << ";";
-    }
-    // right
-    for (int i = 0; i < num_leds_vertical; i++)
-    {
-        buffer << index++ << ":" << (int)rightColors[i][0] << "," << (int)rightColors[i][1] << "," << (int)rightColors[i][2] << ";";
-    }
-    // bottom
-    for (int i = num_leds_horizontal - 1; i >= 0; i--)
-    {
-        buffer << index++ << ":" << (int)bottomColors[i][0] << "," << (int)bottomColors[i][1] << "," << (int)bottomColors[i][2] << ";";
-    }
-    // left
-    for (int i = num_leds_vertical - 1; i >= 0; i--)
-    {
-        buffer << index++ << ":" << (int)leftColors[i][0] << "," << (int)leftColors[i][1] << "," << (int)leftColors[i][2] << ";";
-    }
-    buffer << "\n";
-
-    std::string bufferStr = buffer.str();
-    if (write(serial_fd, bufferStr.c_str(), bufferStr.length()) < 0)
-    {
-        close(serial_fd);
-        fprintf(stderr, "Serial error occurred. Exiting...\n");
-        exit(EXIT_FAILURE);
-    }
-}
-
 // Capture function definitions based on the platform
 #ifdef USE_X11
 cv::Mat captureScreen(const char *x_display)
@@ -238,7 +198,7 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     // Read the "P6" part
     if (!fgets(header, sizeof(header), pipe))
     {
-        fprintf(stderr, "Failed to read PPM header\n");
+        //fprintf(stderr, "Failed to read PPM header\n");
         pclose(pipe);
         return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
     }
@@ -247,7 +207,7 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     {
         fprintf(stderr, "Invalid PPM header\n");
         pclose(pipe);
-        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
+        exit(EXIT_FAILURE);
     }
 
     // Read width, height, and maxval
@@ -255,7 +215,7 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     {
         fprintf(stderr, "Invalid PPM header format\n");
         pclose(pipe);
-        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
+        exit(EXIT_FAILURE);
     }
 
     // Allocate memory for the image
@@ -376,31 +336,59 @@ cv::Scalar calculateSegmentAverage(const cv::Mat &img, int startX, int startY, i
 }
 
 // Function to calculate the average colors for all segments
-std::array<std::vector<cv::Scalar>, 4> calculateAverageColors(const cv::Mat &img)
+void sendFrameAverage(const cv::Mat &img)
 {
     int segmentHeight = img.rows / (num_leds_vertical + 2 * add_vertical);
     int segmentWidth = img.cols / (num_leds_horizontal + 2 * add_horizontal);
+    cv::Scalar color;
+    
+    uint8_t num_leds = 2 * (num_leds_horizontal + num_leds_vertical);
+    uint8_t buffer[3 * num_leds + 4];
+    int index = 0;
+    
+    buffer[index++] = 0x3a;
+    buffer[index++] = 0x12;
+    buffer[index++] = 0xf4;
+    buffer[index++] = num_leds;
 
-    std::vector<cv::Scalar> leftColors(num_leds_vertical);
-    std::vector<cv::Scalar> rightColors(num_leds_vertical);
-    std::vector<cv::Scalar> topColors(num_leds_horizontal);
-    std::vector<cv::Scalar> bottomColors(num_leds_horizontal);
-
-    // Left and Right borders
-    for (int i = 0; i < num_leds_vertical; i++)
-    {
-        leftColors[i] = calculateSegmentAverage(img, 0, (i + add_vertical) * segmentHeight, border_thickness, segmentHeight);
-        rightColors[i] = calculateSegmentAverage(img, img.cols - border_thickness, (i + add_vertical) * segmentHeight, border_thickness, segmentHeight);
-    }
-
-    // Top and Bottom borders
+    // top
     for (int i = 0; i < num_leds_horizontal; i++)
     {
-        topColors[i] = calculateSegmentAverage(img, (i + add_horizontal) * segmentWidth, 0, segmentWidth, border_thickness);
-        bottomColors[i] = calculateSegmentAverage(img, (i + add_horizontal) * segmentWidth, img.rows - border_thickness, segmentWidth, border_thickness);
+        color = calculateSegmentAverage(img, (i + add_horizontal) * segmentWidth, 0, segmentWidth, border_thickness);
+        buffer[index++] = color[0];
+        buffer[index++] = color[1];
+        buffer[index++] = color[2];
     }
 
-    return {leftColors, rightColors, topColors, bottomColors};
+    // right
+    for (int i = 0; i < num_leds_vertical; i++)
+    {
+        color = calculateSegmentAverage(img, img.cols - border_thickness, (i + add_vertical) * segmentHeight, border_thickness, segmentHeight);
+        buffer[index++] = color[0];
+        buffer[index++] = color[1];
+        buffer[index++] = color[2];
+    }
+
+    // bottom
+    for (int i = num_leds_horizontal-1; i >= 0; i--)
+    {
+        color =  calculateSegmentAverage(img, (i + add_horizontal) * segmentWidth, img.rows - border_thickness, segmentWidth, border_thickness);
+        buffer[index++] = color[0];
+        buffer[index++] = color[1];
+        buffer[index++] = color[2];
+
+    }
+
+    // left
+    for (int i = num_leds_vertical-1; i >= 0; i--)
+    {
+        color = calculateSegmentAverage(img, 0, (i + add_vertical) * segmentHeight, border_thickness, segmentHeight);
+        buffer[index++] = color[0];
+        buffer[index++] = color[1];
+        buffer[index++] = color[2];
+    }
+
+    write(serial_fd, buffer, index);
 }
 
 long currentMillis()
@@ -682,10 +670,7 @@ int main(int argc, char *argv[])
         cv::Mat img = futureImg.get();
         futureImg = asyncCaptureScreen();
 #endif
-        auto colors = calculateAverageColors(img);
-
-        // Send colors over serial
-        send_colors(colors[0], colors[1], colors[2], colors[3]);
+        sendFrameAverage(img);
 
         long duration = currentMillis() - start;
 
