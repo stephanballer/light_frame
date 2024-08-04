@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <future>
 
 #ifdef USE_X11
 #include <X11/Xlib.h>
@@ -170,10 +169,6 @@ cv::Mat captureScreen(const char *x_display)
 
     return mat_bgr;
 }
-
-std::future<cv::Mat> asyncCaptureScreen(const char* x_display) {
-    return std::async(std::launch::async, captureScreen, x_display);
-}
 #endif
 
 #ifdef USE_WAYLAND
@@ -234,10 +229,6 @@ cv::Mat captureScreen(const char *wl_display, const char *uid)
     pclose(pipe);
     return img;
 }
-
-std::future<cv::Mat> asyncCaptureScreen(const char* wl_display, const char* uid) {
-    return std::async(std::launch::async, captureScreen, wl_display, uid);
-}
 #endif
 
 #ifdef _WIN32
@@ -269,10 +260,6 @@ cv::Mat captureScreen()
     cvtColor(mat, mat_bgr, cv::COLOR_BGRA2BGR); // Convert to BGR
 
     return mat_bgr;
-}
-
-std::future<cv::Mat> asyncCaptureScreen() {
-    return std::async(std::launch::async, captureScreen);
 }
 #endif
 
@@ -311,10 +298,6 @@ cv::Mat captureScreen()
     // cvtColor(mat, mat_bgr, cv::COLOR_RGBA2BGR); // Convert to BGR
 
     return mat;
-}
-
-std::future<cv::Mat> asyncCaptureScreen() {
-    return std::async(std::launch::async, captureScreen);
 }
 #endif
 
@@ -630,8 +613,6 @@ int main(int argc, char *argv[])
 #ifdef USE_X11
     std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");
     x_display.erase(x_display.find_last_not_of(" \n\r\t") + 1);
-
-    std::future<cv::Mat> futureImg = asyncCaptureScreen(x_display.c_str());
 #endif
 #ifdef USE_WAYLAND
     std::string uid = exec("ps aux | grep -m1 'sway\\|wayland' | awk '{print $1}' | xargs id -u");
@@ -640,11 +621,6 @@ int main(int argc, char *argv[])
     wl_display_cmd << "ls /run/user/" << uid << "/wayland-* | head -n 1 | xargs basename";
     std::string wl_display = exec(wl_display_cmd.str().c_str());
     wl_display.erase(wl_display.find_last_not_of(" \n\r\t") + 1);
-
-    std::future<cv::Mat> futureImg = asyncCaptureScreen(wl_display.c_str(), uid.c_str());
-#endif
-#if defined __APPLE__ || defined _WIN32
-    std::future<cv::Mat> futureImg = asyncCaptureScreen();
 #endif
 
     while (1)
@@ -659,16 +635,13 @@ int main(int argc, char *argv[])
         }
 
 #ifdef USE_X11
-        cv::Mat img = futureImg.get();
-        futureImg = asyncCaptureScreen(x_display.c_str());
+        cv::Mat img = captureScreen(x_display.c_str());
 #endif
 #ifdef USE_WAYLAND
-        cv::Mat img = futureImg.get();
-        futureImg = asyncCaptureScreen(wl_display.c_str(), uid.c_str());
+        cv::Mat img = captureScreen(wl_display.c_str(), uid.c_str());
 #endif
 #if defined __APPLE__ || defined _WIN32
-        cv::Mat img = futureImg.get();
-        futureImg = asyncCaptureScreen();
+        cv::Mat img = captureScreen();
 #endif
         sendFrameAverage(img);
 
