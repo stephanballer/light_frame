@@ -110,8 +110,10 @@ void init_serial(const char *port)
         exit(EXIT_FAILURE);
     }
 
-    cfsetospeed(&tty, B115200);
-    cfsetispeed(&tty, B115200);
+    //cfsetospeed(&tty, B115200); // ESP8266
+    //cfsetispeed(&tty, B115200); // ESP8266
+    cfsetospeed(&tty, B921600); // ESP32
+    cfsetispeed(&tty, B921600); // ESP32
 
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8; // 8-bit chars
     tty.c_iflag &= ~IGNBRK;                     // disable break processing
@@ -627,7 +629,7 @@ int main(int argc, char *argv[])
     {
         long start = currentMillis();
 
-        if (!check_serial_connection(serial_fd))
+        if (!std::ifstream(argv[1]).good() || !check_serial_connection(serial_fd))
         {
             fprintf(stderr, "Serial device disconnected. Exiting...\n");
             close(serial_fd);
