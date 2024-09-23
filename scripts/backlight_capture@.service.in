@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 ExecStart=/usr/bin/backlight_capture /dev/%I
-StandardOutput=append:/var/log/backlight_capture.log
-StandardError=append:/var/log/backlight_capture.log
+StandardOutput=/var/log/backlight_capture.log
+StandardError=/var/log/backlight_capture.log
 
 [Install]
 WantedBy=multi-user.target

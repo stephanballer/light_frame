@@ -2,6 +2,7 @@
 
 while true
 do
-  /Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture /dev/cu.usbserial-FTB6SPL3
+  #/Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture /dev/cu.usbserial-FTB6SPL3 # ESP8266
+  /Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture /dev/cu.usbserial-0001 # ESP32
   sleep 30
 done

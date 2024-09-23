@@ -112,8 +112,8 @@ void init_serial(const char *port)
 
     //cfsetospeed(&tty, B115200); // ESP8266
     //cfsetispeed(&tty, B115200); // ESP8266
-    cfsetospeed(&tty, B921600); // ESP32
-    cfsetispeed(&tty, B921600); // ESP32
+    cfsetospeed(&tty, 921600); // ESP32
+    cfsetispeed(&tty, 921600); // ESP32
 
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8; // 8-bit chars
     tty.c_iflag &= ~IGNBRK;                     // disable break processing
