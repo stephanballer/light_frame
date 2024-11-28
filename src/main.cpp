@@ -366,11 +366,30 @@ std::string exec(const char *cmd) {
 
     pipe_ptr pipe(popen(cmd, "r"), pclose);
     if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+        std::cerr << "popen() failed!" << std::endl;
+        std::exit(EXIT_FAILURE);
     }
+
     while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
         result += buffer.data();
     }
+
+    // Check the exit status of the command
+    int exit_status = pclose(pipe.release());
+    if (exit_status == -1) {
+        std::cerr << "Error while closing the pipe!" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else if (WIFEXITED(exit_status)) {
+        int return_code = WEXITSTATUS(exit_status);
+        if (return_code != 0) {
+            std::cerr << "Command failed with exit code: " << return_code << std::endl;
+            std::exit(EXIT_FAILURE);
+        }
+    } else {
+        std::cerr << "Command did not terminate normally!" << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
     return result;
 }
 #endif
