@@ -16,5 +16,7 @@
     <string>This application requires access to the camera for screen recording.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>This application needs permission to control other apps for screen recording purposes.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+<string>This app needs to capture your screen to provide ambient lighting.</string>
 </dict>
 </plist>

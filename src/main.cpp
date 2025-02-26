@@ -36,10 +36,6 @@
 #include <windows.h>
 #endif
 
-#ifdef __APPLE__
-#include <ApplicationServices/ApplicationServices.h>
-#endif
-
 std::map<std::string, std::string> defaultConfig = {
     {"num_leds_vertical", "9"},
     {"num_leds_horizontal", "21"},
@@ -104,10 +100,15 @@ void init_serial(const char *port) {
         exit(EXIT_FAILURE);
     }
 
-    // cfsetospeed(&tty, B115200); // ESP8266
-    // cfsetispeed(&tty, B115200); // ESP8266
+// cfsetospeed(&tty, B115200); // ESP8266
+// cfsetispeed(&tty, B115200); // ESP8266
+#ifdef __APPLE__
+    cfsetospeed(&tty, 921600);  // ESP32
+    cfsetispeed(&tty, 921600);  // ESP32
+#else
     cfsetospeed(&tty, B921600);  // ESP32
     cfsetispeed(&tty, B921600);  // ESP32
+#endif
 
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;  // 8-bit chars
     tty.c_iflag &= ~IGNBRK;                      // disable break processing
@@ -249,37 +250,40 @@ cv::Mat captureScreen() {
 #endif
 
 #ifdef __APPLE__
+#include <cstdio>
+
 cv::Mat captureScreen() {
-    if (CGDisplayIsAsleep(kCGDirectMainDisplay)) {
-        return cv::Mat(720, 1280, CV_8UC3, cv::Scalar(0, 0, 0));
+    // Create a temporary file to store the screenshot
+    char tempFilePath[] = "/tmp/screen_capture_XXXXXX";
+    int fileDescriptor = mkstemp(tempFilePath);
+    if (fileDescriptor == -1) {
+        fprintf(stderr, "Failed to create temporary file\n");
+        exit(EXIT_FAILURE);
     }
+    close(fileDescriptor);
 
-    CGImageRef screenImage = CGDisplayCreateImage(kCGDirectMainDisplay);
-    if (!screenImage) {
-        fprintf(stderr, "Failed to capture screen image\n");
+    // Execute screencapture command to capture the screen to the temporary file
+    std::string command = "screencapture -x ";
+    command += tempFilePath;
+    int result = system(command.c_str());
+    if (result != 0) {
+        fprintf(stderr, "Failed to execute screencapture command\n");
+        unlink(tempFilePath);  // Delete the temporary file
         exit(EXIT_FAILURE);
     }
 
-    int width = (int)CGImageGetWidth(screenImage);
-    int height = (int)CGImageGetHeight(screenImage);
-
-    cv::Mat mat(height, width, CV_8UC4);  // CGImage is RGBA
-
-    CGContextRef contextRef = CGBitmapContextCreate(mat.data, width, height, 8, mat.step[0], CGImageGetColorSpace(screenImage), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-    if (!contextRef) {
-        CGImageRelease(screenImage);
-        fprintf(stderr, "Failed to create bitmap context\n");
+    // Read the image using OpenCV
+    cv::Mat image = cv::imread(tempFilePath);
+    if (image.empty()) {
+        fprintf(stderr, "Failed to read captured image\n");
+        unlink(tempFilePath);  // Delete the temporary file
         exit(EXIT_FAILURE);
     }
 
-    CGContextDrawImage(contextRef, CGRectMake(0, 0, width, height), screenImage);
-    CGContextRelease(contextRef);
-    CGImageRelease(screenImage);
+    // Delete the temporary file
+    unlink(tempFilePath);
 
-    // cv::Mat mat_bgr;
-    // cvtColor(mat, mat_bgr, cv::COLOR_RGBA2BGR); // Convert to BGR
-
-    return mat;
+    return image;  // OpenCV imread already provides BGR format
 }
 #endif
 
@@ -455,7 +459,7 @@ void readConfig(const std::string &configPath, std::map<std::string, std::string
         std::ofstream newConfigFile(configPath);
         if (!newConfigFile.is_open()) {
             std::cerr << "Error: Could not create configuration file at " << configPath << std::endl;
-            exit(EXIT_FAILURE);
+            exit(1);
         }
         for (const auto &pair : defaultConfig) {
             newConfigFile << pair.first << "=" << pair.second << std::endl;
@@ -500,7 +504,7 @@ void overrideConfigWithArgs(int argc, char *argv[]) {
                 "  -H,  --horizontal-leds   number of horizontal leds\n"
                 "  -aH, --add-horizontal    add virtual leds left and right\n"
                 "  -V,  --vertical-leds     number of vertical leds\n"
-                "  -aV,  --add-vertical      add virtual leds top and bottom\n"
+                "  -aV, --add-vertical      add virtual leds top and bottom\n"
                 "  -t,  --border-thickness  border thickness while calculating average color\n"
                 "  -s,  --skip-pixels       step size while calculating average color\n"
                 "  -b,  --brightness        led brightness\n"
