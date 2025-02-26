@@ -38,20 +38,30 @@ elseif (APPLE)
     find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
     target_link_libraries(backlight_capture ${COREFOUNDATION_LIBRARY} ${APPLICATIONSERVICES_LIBRARY})
 
-    install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
-
+    # Set up application bundle
     set(PLIST_FILE "${CMAKE_BINARY_DIR}/com.backlight_capture.backlight_capture.plist")
     set(BASH_FILE "${CMAKE_BINARY_DIR}/backlight_capture.sh")
+    set(ENTITLEMENTS_FILE "${CMAKE_SOURCE_DIR}/scripts/backlight_capture.entitlements")
 
     set_target_properties(
       backlight_capture PROPERTIES
       MACOSX_BUNDLE TRUE
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/scripts/info.plist
       )
+      
+    # Add post-build command to sign the application with entitlements
+    add_custom_command(
+      TARGET backlight_capture
+      POST_BUILD
+      COMMAND codesign --force --deep --sign - --entitlements ${ENTITLEMENTS_FILE} $<TARGET_BUNDLE_DIR:backlight_capture>
+      COMMENT "Signing the application with entitlements"
+    )
 
     configure_file(${CMAKE_SOURCE_DIR}/scripts/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
     configure_file(${CMAKE_SOURCE_DIR}/scripts/backlight_capture.sh.in ${BASH_FILE} @ONLY)
 
+    # Install both the bundle itself and the launch daemon files
+    install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
     install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchDaemons)
     install(
       FILES ${BASH_FILE}

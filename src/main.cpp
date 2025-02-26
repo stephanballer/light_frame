@@ -263,10 +263,28 @@ cv::Mat captureScreen() {
     close(fileDescriptor);
 
     // Execute screencapture command to capture the screen to the temporary file
-    std::string command = "screencapture -x ";
+    std::string command = "screencapture -x -r ";
     command += tempFilePath;
     int result = system(command.c_str());
+
     if (result != 0) {
+        // Check if the file is empty (likely a permission issue)
+        struct stat st;
+        if (stat(tempFilePath, &st) == 0 && st.st_size == 0) {
+            fprintf(stderr, "Screen capture permission denied.\n\n");
+            fprintf(stderr, "To enable screen recording for this application:\n");
+            fprintf(stderr, "1. Go to System Preferences > Security & Privacy > Privacy\n");
+            fprintf(stderr, "2. Select 'Screen Recording' from the left sidebar\n");
+            fprintf(stderr, "3. Ensure this application is checked in the list\n");
+            fprintf(stderr, "4. Restart the application\n\n");
+
+            // Open the Security & Privacy preferences
+            system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'");
+
+            unlink(tempFilePath);  // Delete the temporary file
+            exit(EXIT_FAILURE);
+        }
+
         fprintf(stderr, "Failed to execute screencapture command\n");
         unlink(tempFilePath);  // Delete the temporary file
         exit(EXIT_FAILURE);
@@ -274,6 +292,7 @@ cv::Mat captureScreen() {
 
     // Read the image using OpenCV
     cv::Mat image = cv::imread(tempFilePath);
+    cvtColor(image, image, cv::COLOR_RGBA2BGR);  // Convert to BGR
     if (image.empty()) {
         fprintf(stderr, "Failed to read captured image\n");
         unlink(tempFilePath);  // Delete the temporary file
@@ -287,7 +306,6 @@ cv::Mat captureScreen() {
 }
 #endif
 
-// Function to calculate the average color of a segment
 cv::Scalar calculateSegmentAverage(const cv::Mat &img, int startX, int startY, int width, int height) {
     cv::Rect region(startX, startY, width, height);
     cv::Mat roi = img(region);  // Region of interest
