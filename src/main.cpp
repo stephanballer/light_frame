@@ -133,6 +133,30 @@ void init_serial(const char *port) {
 // Capture function definitions based on the platform
 #ifdef USE_X11
 cv::Mat captureScreen(const char *x_display) {
+    // Locate the .Xauthority file
+    FILE *pipe = popen("ls /home/*/.Xauthority 2>/dev/null", "r");
+    if (!pipe) {
+        fprintf(stderr, "Failed to locate .Xauthority file\n");
+        exit(EXIT_FAILURE);
+    }
+
+    char buffer[256];
+    std::string xauthority_path;
+    if (fgets(buffer, sizeof(buffer), pipe)) {
+        xauthority_path = buffer;
+        xauthority_path.erase(xauthority_path.find_last_not_of(" \n\r\t") + 1);  // Trim whitespace
+    }
+    pclose(pipe);
+
+    if (xauthority_path.empty()) {
+        fprintf(stderr, "Could not find .Xauthority file\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the XAUTHORITY environment variable
+    setenv("XAUTHORITY", xauthority_path.c_str(), 1);
+
+    // Open the X display
     Display *display = XOpenDisplay(x_display);
     if (!display) {
         fprintf(stderr, "Failed to open X display\n");
@@ -577,8 +601,7 @@ int main(int argc, char *argv[]) {
     printf("Serial connection established\n");
 
 #ifdef USE_X11
-    std::string x_display = exec("ps e $(pgrep -u $(whoami) Xorg 2>/dev/null) | grep -m1 'DISPLAY' | sed 's/.*DISPLAY=\\([^ ]*\\).*/\\1/'");
-    x_display.erase(x_display.find_last_not_of(" \n\r\t") + 1);
+    std::string x_display = ":0";
 #endif
 #ifdef USE_WAYLAND
     std::string uid = exec("ps aux | grep -m1 'sway\\|wayland' | awk '{print $1}' | xargs id -u");
