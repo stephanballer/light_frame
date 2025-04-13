@@ -179,7 +179,7 @@ cv::Mat captureScreen(const char *x_display) {
 
     cv::Mat mat(height, width, CV_8UC4, img->data);
     cv::Mat mat_bgr;
-    cvtColor(mat, mat_bgr, cv::COLOR_BGRA2BGR);  // Convert to BGR
+    cvtColor(mat, mat_bgr, cv::COLOR_BGRA2RGB);  // Convert to RGB
 
     XDestroyImage(img);
     XCloseDisplay(display);
