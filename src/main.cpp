@@ -130,6 +130,63 @@ void init_serial(const char *port) {
     }
 }
 
+static const uint8_t HANDSHAKE_REQUEST[3]  = {0xAB, 0xCD, 0xEF};
+static const uint8_t HANDSHAKE_RESPONSE[3] = {0xFE, 0xDC, 0xBA};
+
+// Scan the byte stream for HANDSHAKE_RESPONSE within timeout_sec seconds.
+static bool wait_for_id(int timeout_sec) {
+    int matched = 0;
+    struct timeval deadline;
+    gettimeofday(&deadline, NULL);
+    deadline.tv_sec += timeout_sec;
+
+    while (matched < 3) {
+        struct timeval now, remaining;
+        gettimeofday(&now, NULL);
+        remaining.tv_sec  = deadline.tv_sec  - now.tv_sec;
+        remaining.tv_usec = deadline.tv_usec - now.tv_usec;
+        if (remaining.tv_usec < 0) { remaining.tv_sec--; remaining.tv_usec += 1000000; }
+        if (remaining.tv_sec < 0) return false;
+
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(serial_fd, &fds);
+        if (select(serial_fd + 1, &fds, NULL, NULL, &remaining) <= 0) return false;
+
+        uint8_t c;
+        if (read(serial_fd, &c, 1) != 1) return false;
+        matched = (c == HANDSHAKE_RESPONSE[matched]) ? matched + 1
+                : (c == HANDSHAKE_RESPONSE[0])       ? 1
+                :                                      0;
+    }
+    return true;
+}
+
+void perform_handshake(const char *port) {
+    tcflush(serial_fd, TCIOFLUSH);
+
+    // Primary: wait for the receiver to announce itself after boot (covers auto-reset boards)
+    if (wait_for_id(4)) {
+        printf("Handshake successful\n");
+        return;
+    }
+
+    // Fallback: request identification explicitly (no auto-reset, or PC started late)
+    if (write(serial_fd, HANDSHAKE_REQUEST, sizeof(HANDSHAKE_REQUEST)) != (ssize_t)sizeof(HANDSHAKE_REQUEST)) {
+        fprintf(stderr, "Failed to send handshake request to %s\n", port);
+        close(serial_fd);
+        exit(EXIT_FAILURE);
+    }
+    if (wait_for_id(2)) {
+        printf("Handshake successful\n");
+        return;
+    }
+
+    fprintf(stderr, "%s is not a backlight receiver\n", port);
+    close(serial_fd);
+    exit(EXIT_FAILURE);
+}
+
 // Capture function definitions based on the platform
 #ifdef USE_X11
 cv::Mat captureScreen(const char *x_display) {
@@ -598,6 +655,7 @@ int main(int argc, char *argv[]) {
     overrideConfigWithArgs(argc, argv);
 
     init_serial(argv[1]);
+    perform_handshake(argv[1]);
     printf("Serial connection established\n");
 
 #ifdef USE_X11
