@@ -60,12 +60,15 @@ elseif (APPLE)
     configure_file(${CMAKE_SOURCE_DIR}/scripts/com.backlight_capture.backlight_capture.plist.in ${PLIST_FILE} @ONLY)
     configure_file(${CMAKE_SOURCE_DIR}/scripts/backlight_capture.sh.in ${BASH_FILE} @ONLY)
 
-    # Install both the bundle itself and the launch daemon files
+    # Install the bundle plus the LaunchAgent that runs it in the user session
     install(TARGETS backlight_capture DESTINATION "/Library/Application Support/BacklightCapture")
-    install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchDaemons)
+    install(FILES ${PLIST_FILE} DESTINATION /Library/LaunchAgents)
     install(
       FILES ${BASH_FILE}
-      PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+      PERMISSIONS
+        OWNER_EXECUTE OWNER_WRITE OWNER_READ
+        GROUP_EXECUTE GROUP_READ
+        WORLD_EXECUTE WORLD_READ
       DESTINATION /Library/Application\ Support/BacklightCapture
       )
 endif()

@@ -15,9 +15,8 @@
       <key>SuccessfulExit</key>
       <false/>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/var/log/backlight_capture.log</string>
-    <key>StandardErrorPath</key>
-    <string>/var/log/backlight_capture.log</string>
+    <!-- Runs in the user's GUI session (LaunchAgent), so screen capture can be
+         granted in System Settings > Privacy & Security > Screen Recording.
+         The wrapper writes its own log to ~/Library/Logs/backlight_capture.log. -->
 </dict>
 </plist>

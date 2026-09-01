@@ -106,6 +106,34 @@ backlight_capture /dev/ttyUSBX
 
 Replace `/dev/ttyUSBX` with the appropriate serial device.
 
+### macOS
+
+`sudo make install` places a LaunchAgent in _/Library/LaunchAgents_, so the program starts in your
+GUI session at login and retries every 30 seconds until the device shows up. Load it without
+logging out:
+
+```sh
+launchctl bootstrap gui/$UID /Library/LaunchAgents/com.backlight_capture.backlight_capture.plist
+```
+
+Screen capture is gated by TCC: grant **Screen Recording** to
+_/Library/Application Support/BacklightCapture/backlight_capture.app_ under
+System Settings > Privacy & Security > Screen Recording, then restart the agent:
+
+```sh
+launchctl kickstart -k gui/$UID/com.backlight_capture.backlight_capture
+```
+
+The app is ad-hoc signed, so a rebuild changes its code hash and invalidates the approval. If
+capture stops working after `make install`, clear the stale entry and grant it again:
+
+```sh
+tccutil reset ScreenCapture com.backlight_capture.backlight_capture
+```
+
+The serial port is hardcoded in _/Library/Application Support/BacklightCapture/backlight_capture.sh_
+(`/dev/cu.usbserial-0001` by default); logs go to _~/Library/Logs/backlight_capture.log_.
+
 ## Configuration
 
 You can configure the number of LEDs and other parameters via the config file:

@@ -1,8 +1,19 @@
 #!/bin/bash
 
+LOG="$HOME/Library/Logs/backlight_capture.log"
+mkdir -p "$(dirname "$LOG")"
+exec >>"$LOG" 2>&1
+
+DEVICE=/dev/cu.usbserial-0001 # ESP32
+#DEVICE=/dev/cu.usbserial-FTB6SPL3 # ESP8266
+
 while true
 do
-  #/Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture /dev/cu.usbserial-FTB6SPL3 # ESP8266
-  /Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture /dev/cu.usbserial-0001 # ESP32
+  # Keep the log from growing without bound while the device is absent
+  if [ -f "$LOG" ] && [ "$(stat -f%z "$LOG")" -gt 10485760 ]; then
+    : >"$LOG"
+  fi
+
+  /Library/Application\ Support/BacklightCapture/backlight_capture.app/Contents/MacOS/backlight_capture "$DEVICE"
   sleep 30
 done
