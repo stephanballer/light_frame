@@ -36,6 +36,18 @@
 #include <windows.h>
 #endif
 
+// Compiled as Objective-C++ on macOS (see CMakeLists.txt) so the capture path
+// can use ScreenCaptureKit.
+#ifdef __APPLE__
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
+#import <ScreenCaptureKit/ScreenCaptureKit.h>
+
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#endif
+
 std::map<std::string, std::string> defaultConfig = {
     {"num_leds_vertical", "9"},
     {"num_leds_horizontal", "21"},
@@ -331,59 +343,173 @@ cv::Mat captureScreen() {
 #endif
 
 #ifdef __APPLE__
-#include <cstdio>
+// ScreenCaptureKit keeps one capture session open for the lifetime of the
+// process and pushes frames from its own dispatch queue. The capture loop takes
+// whatever the most recent frame is, so there is no per-frame process spawn and
+// no image encode/decode round trip.
+static std::mutex frame_mutex;
+static std::condition_variable frame_ready;
+static cv::Mat latest_frame;
+static bool has_fresh_frame = false;
+
+static void report_permission_denied(NSError *error) {
+    if (error) {
+        fprintf(stderr, "ScreenCaptureKit error: %s\n", error.localizedDescription.UTF8String);
+    }
+    fprintf(stderr, "Screen capture permission denied.\n\n");
+    fprintf(stderr, "To enable screen recording for this application:\n");
+    fprintf(stderr, "1. Go to System Settings > Privacy & Security > Screen Recording\n");
+    fprintf(stderr, "2. Add /Library/Application Support/BacklightCapture/backlight_capture.app\n");
+    fprintf(stderr, "3. Restart the application\n\n");
+    fprintf(stderr, "The app is ad-hoc signed, so a rebuild invalidates an existing approval.\n");
+    fprintf(stderr, "Clear the stale entry with:\n");
+    fprintf(stderr, "  tccutil reset ScreenCapture com.backlight_capture.backlight_capture\n\n");
+}
+
+@interface FrameReceiver : NSObject <SCStreamOutput, SCStreamDelegate>
+@end
+
+@implementation FrameReceiver
+
+- (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
+    if (type != SCStreamOutputTypeScreen || !CMSampleBufferIsValid(sampleBuffer)) {
+        return;
+    }
+
+    // While the screen is static the stream keeps delivering buffers marked idle
+    // or blank, which carry no new pixels. Only complete frames are usable.
+    NSArray *attachments = (__bridge NSArray *)CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, NO);
+    NSNumber *status = attachments.firstObject[SCStreamFrameInfoStatus];
+    if (status && status.intValue != SCFrameStatusComplete) {
+        return;
+    }
+
+    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (!pixelBuffer) {
+        return;
+    }
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    // Wraps the pixel buffer without copying; cvtColor below copies the pixels
+    // out before the buffer is unlocked and handed back to the stream.
+    cv::Mat bgra((int)CVPixelBufferGetHeight(pixelBuffer), (int)CVPixelBufferGetWidth(pixelBuffer), CV_8UC4,
+                 CVPixelBufferGetBaseAddress(pixelBuffer), CVPixelBufferGetBytesPerRow(pixelBuffer));
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex);
+        // The serial frame carries RGB triples and sendFrameAverage writes the
+        // channels straight out, so the Mat has to be RGB - same as the X11 path.
+        cvtColor(bgra, latest_frame, cv::COLOR_BGRA2RGB);
+        has_fresh_frame = true;
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+
+    frame_ready.notify_one();
+}
+
+- (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
+    fprintf(stderr, "Screen capture stopped: %s\n", error.localizedDescription.UTF8String);
+    exit(EXIT_FAILURE);
+}
+
+@end
+
+static SCStream *capture_stream = nil;
+static FrameReceiver *frame_receiver = nil;
+
+// Opens the capture session. Called once, before the capture loop starts.
+void start_screen_capture(int frame_interval_millis) {
+    __block SCShareableContent *shareable = nil;
+    __block NSError *content_error = nil;
+    dispatch_semaphore_t content_ready = dispatch_semaphore_create(0);
+
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
+      shareable = content;
+      content_error = error;
+      dispatch_semaphore_signal(content_ready);
+    }];
+
+    if (dispatch_semaphore_wait(content_ready, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) != 0) {
+        fprintf(stderr, "Timed out querying shareable content\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Without Screen Recording permission there is no error to inspect: the
+    // display list simply comes back empty.
+    if (content_error || shareable.displays.count == 0) {
+        report_permission_denied(content_error);
+        exit(EXIT_FAILURE);
+    }
+
+    SCDisplay *display = shareable.displays.firstObject;
+    SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+
+    SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
+    // SCDisplay reports points; capture at the native pixel size so
+    // border_thickness keeps the meaning it had with the screencapture path.
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(display.displayID);
+    if (mode) {
+        config.width = CGDisplayModeGetPixelWidth(mode);
+        config.height = CGDisplayModeGetPixelHeight(mode);
+        CGDisplayModeRelease(mode);
+    } else {
+        config.width = display.width;
+        config.height = display.height;
+    }
+    config.pixelFormat = kCVPixelFormatType_32BGRA;
+    config.minimumFrameInterval = CMTimeMake(frame_interval_millis, 1000);
+    config.queueDepth = 3;
+    config.showsCursor = NO;
+
+    frame_receiver = [[FrameReceiver alloc] init];
+    capture_stream = [[SCStream alloc] initWithFilter:filter configuration:config delegate:frame_receiver];
+
+    NSError *output_error = nil;
+    dispatch_queue_t queue = dispatch_queue_create("com.backlight_capture.frames", DISPATCH_QUEUE_SERIAL);
+    if (![capture_stream addStreamOutput:frame_receiver
+                                    type:SCStreamOutputTypeScreen
+                      sampleHandlerQueue:queue
+                                   error:&output_error]) {
+        fprintf(stderr, "Failed to add stream output: %s\n", output_error.localizedDescription.UTF8String);
+        exit(EXIT_FAILURE);
+    }
+
+    __block NSError *start_error = nil;
+    dispatch_semaphore_t started = dispatch_semaphore_create(0);
+    [capture_stream startCaptureWithCompletionHandler:^(NSError *error) {
+      start_error = error;
+      dispatch_semaphore_signal(started);
+    }];
+
+    if (dispatch_semaphore_wait(started, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) != 0) {
+        fprintf(stderr, "Timed out starting screen capture\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (start_error) {
+        report_permission_denied(start_error);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Screen capture started (%lux%lu)\n", (unsigned long)config.width, (unsigned long)config.height);
+}
 
 cv::Mat captureScreen() {
-    // Create a temporary file to store the screenshot
-    char tempFilePath[] = "/tmp/screen_capture_XXXXXX";
-    int fileDescriptor = mkstemp(tempFilePath);
-    if (fileDescriptor == -1) {
-        fprintf(stderr, "Failed to create temporary file\n");
-        exit(EXIT_FAILURE);
-    }
-    close(fileDescriptor);
+    std::unique_lock<std::mutex> lock(frame_mutex);
 
-    // Execute screencapture command to capture the screen to the temporary file
-    std::string command = "screencapture -x -r ";
-    command += tempFilePath;
-    int result = system(command.c_str());
+    // The stream stops producing complete frames while the screen is static, so
+    // a timeout is normal: reuse the previous frame rather than stalling the
+    // loop. Only the very first frame is worth waiting on for longer.
+    long timeout_millis = latest_frame.empty() ? 5000 : 500;
+    frame_ready.wait_for(lock, std::chrono::milliseconds(timeout_millis), [] { return has_fresh_frame; });
 
-    if (result != 0) {
-        // Check if the file is empty (likely a permission issue)
-        struct stat st;
-        if (stat(tempFilePath, &st) == 0 && st.st_size == 0) {
-            fprintf(stderr, "Screen capture permission denied.\n\n");
-            fprintf(stderr, "To enable screen recording for this application:\n");
-            fprintf(stderr, "1. Go to System Preferences > Security & Privacy > Privacy\n");
-            fprintf(stderr, "2. Select 'Screen Recording' from the left sidebar\n");
-            fprintf(stderr, "3. Ensure this application is checked in the list\n");
-            fprintf(stderr, "4. Restart the application\n\n");
-
-            // Open the Security & Privacy preferences
-            system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'");
-
-            unlink(tempFilePath);  // Delete the temporary file
-            exit(EXIT_FAILURE);
-        }
-
-        fprintf(stderr, "Failed to execute screencapture command\n");
-        unlink(tempFilePath);  // Delete the temporary file
+    if (latest_frame.empty()) {
+        fprintf(stderr, "No frames received from ScreenCaptureKit\n\n");
+        report_permission_denied(nil);
         exit(EXIT_FAILURE);
     }
 
-    // Read the image using OpenCV
-    cv::Mat image = cv::imread(tempFilePath);
-    cvtColor(image, image, cv::COLOR_RGBA2BGR);  // Convert to BGR
-    if (image.empty()) {
-        fprintf(stderr, "Failed to read captured image\n");
-        unlink(tempFilePath);  // Delete the temporary file
-        exit(EXIT_FAILURE);
-    }
-
-    // Delete the temporary file
-    unlink(tempFilePath);
-
-    return image;  // OpenCV imread already provides BGR format
+    has_fresh_frame = false;
+    return latest_frame.clone();
 }
 #endif
 
@@ -654,6 +780,10 @@ int main(int argc, char *argv[]) {
     printf("Loaded config\n");
     overrideConfigWithArgs(argc, argv);
 
+#ifdef __APPLE__
+    start_screen_capture(min_millis);
+#endif
+
     init_serial(argv[1]);
     perform_handshake(argv[1]);
     printf("Serial connection established\n");
@@ -670,10 +800,15 @@ int main(int argc, char *argv[]) {
     wl_display.erase(wl_display.find_last_not_of(" \n\r\t") + 1);
 #endif
 
+    long last_report = currentMillis();
+    int frames_since_report = 0;
+
     while (1) {
         long start = currentMillis();
 
-        if (!std::ifstream(argv[1]).good() || !check_serial_connection(serial_fd)) {
+        // access() rather than opening the device: this runs every frame, and
+        // opening a tty goes through the driver each time.
+        if (access(argv[1], F_OK) != 0 || !check_serial_connection(serial_fd)) {
             fprintf(stderr, "Serial device disconnected. Exiting...\n");
             close(serial_fd);
             exit(EXIT_FAILURE);
@@ -696,7 +831,16 @@ int main(int argc, char *argv[]) {
             usleep((min_millis - duration) * 1000);
         }
 
-        // printf("FPS: %d\n", 1000 / (currentMillis() - start));
+        // Report the achieved rate every 5 s so the log shows what the capture
+        // path actually manages.
+        frames_since_report++;
+        long now = currentMillis();
+        if (now - last_report >= 5000) {
+            printf("FPS: %.1f\n", frames_since_report * 1000.0 / (now - last_report));
+            fflush(stdout);
+            frames_since_report = 0;
+            last_report = now;
+        }
     }
 
     close(serial_fd);

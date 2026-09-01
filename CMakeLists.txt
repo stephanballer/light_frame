@@ -34,9 +34,26 @@ elseif (WIN32)
     install(FILES ${CMAKE_BINARY_DIR}/backlight_capture.bat DESTINATION "C:/Program Files/BacklightCapture")
 elseif (APPLE)
     target_compile_definitions(backlight_capture PRIVATE __APPLE__)
+    # macOS captures through ScreenCaptureKit (macOS 12.3+), so the single
+    # translation unit is compiled as Objective-C++ here.
+    set_source_files_properties(src/main.cpp PROPERTIES COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)
     find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
-    target_link_libraries(backlight_capture ${COREFOUNDATION_LIBRARY} ${APPLICATIONSERVICES_LIBRARY})
+    find_library(FOUNDATION_LIBRARY Foundation)
+    find_library(COREGRAPHICS_LIBRARY CoreGraphics)
+    find_library(COREMEDIA_LIBRARY CoreMedia)
+    find_library(COREVIDEO_LIBRARY CoreVideo)
+    find_library(SCREENCAPTUREKIT_LIBRARY ScreenCaptureKit)
+    target_link_libraries(
+      backlight_capture
+      ${COREFOUNDATION_LIBRARY}
+      ${APPLICATIONSERVICES_LIBRARY}
+      ${FOUNDATION_LIBRARY}
+      ${COREGRAPHICS_LIBRARY}
+      ${COREMEDIA_LIBRARY}
+      ${COREVIDEO_LIBRARY}
+      ${SCREENCAPTUREKIT_LIBRARY}
+      )
 
     # Set up application bundle
     set(PLIST_FILE "${CMAKE_BINARY_DIR}/com.backlight_capture.backlight_capture.plist")
