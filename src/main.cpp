@@ -43,6 +43,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -351,6 +352,10 @@ static std::mutex frame_mutex;
 static std::condition_variable frame_ready;
 static cv::Mat latest_frame;
 static bool has_fresh_frame = false;
+// Set before the stream is torn down. Frames keep arriving on the capture queue
+// while the main thread is inside exit(), and by then the statics below may
+// already be destroyed.
+static std::atomic<bool> capture_stopping{false};
 
 static void report_permission_denied(NSError *error) {
     if (error) {
@@ -372,7 +377,7 @@ static void report_permission_denied(NSError *error) {
 @implementation FrameReceiver
 
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
-    if (type != SCStreamOutputTypeScreen || !CMSampleBufferIsValid(sampleBuffer)) {
+    if (capture_stopping || type != SCStreamOutputTypeScreen || !CMSampleBufferIsValid(sampleBuffer)) {
         return;
     }
 
@@ -394,12 +399,17 @@ static void report_permission_denied(NSError *error) {
     // out before the buffer is unlocked and handed back to the stream.
     cv::Mat bgra((int)CVPixelBufferGetHeight(pixelBuffer), (int)CVPixelBufferGetWidth(pixelBuffer), CV_8UC4,
                  CVPixelBufferGetBaseAddress(pixelBuffer), CVPixelBufferGetBytesPerRow(pixelBuffer));
-    {
+    // An exception escaping an Objective-C callback calls terminate(), so a
+    // late frame racing shutdown must not be allowed to throw out of here.
+    try {
         std::lock_guard<std::mutex> lock(frame_mutex);
         // The serial frame carries RGB triples and sendFrameAverage writes the
         // channels straight out, so the Mat has to be RGB - same as the X11 path.
         cvtColor(bgra, latest_frame, cv::COLOR_BGRA2RGB);
         has_fresh_frame = true;
+    } catch (...) {
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+        return;
     }
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 
@@ -415,6 +425,24 @@ static void report_permission_denied(NSError *error) {
 
 static SCStream *capture_stream = nil;
 static FrameReceiver *frame_receiver = nil;
+
+// Stops frame delivery so it cannot race teardown of the state the callback
+// touches. Registered with atexit() once the stream is running.
+static void stop_screen_capture() {
+    capture_stopping = true;
+
+    SCStream *stream = capture_stream;
+    capture_stream = nil;
+    if (!stream) {
+        return;
+    }
+
+    dispatch_semaphore_t stopped = dispatch_semaphore_create(0);
+    [stream stopCaptureWithCompletionHandler:^(NSError *error) {
+      dispatch_semaphore_signal(stopped);
+    }];
+    dispatch_semaphore_wait(stopped, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
+}
 
 // Opens the capture session. Called once, before the capture loop starts.
 void start_screen_capture(int frame_interval_millis) {
@@ -489,6 +517,11 @@ void start_screen_capture(int frame_interval_millis) {
         report_permission_denied(start_error);
         exit(EXIT_FAILURE);
     }
+
+    // The program exits through exit() from many places. atexit handlers run
+    // before the destructors of statics constructed before this point, so the
+    // stream is torn down while frame_mutex and latest_frame are still alive.
+    atexit(stop_screen_capture);
 
     printf("Screen capture started (%lux%lu)\n", (unsigned long)config.width, (unsigned long)config.height);
 }
@@ -780,13 +813,15 @@ int main(int argc, char *argv[]) {
     printf("Loaded config\n");
     overrideConfigWithArgs(argc, argv);
 
-#ifdef __APPLE__
-    start_screen_capture(min_millis);
-#endif
-
     init_serial(argv[1]);
     perform_handshake(argv[1]);
     printf("Serial connection established\n");
+
+    // After the serial port, so the frequent "device not plugged in" exit path
+    // never has to race a running capture stream.
+#ifdef __APPLE__
+    start_screen_capture(min_millis);
+#endif
 
 #ifdef USE_X11
     std::string x_display = ":0";
