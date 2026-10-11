@@ -12,12 +12,12 @@ if (APPLE)
   endif ()
 endif()
 
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 
 include_directories(${OpenCV_INCLUDE_DIRS} src)
 
 add_executable(backlight_capture src/main.cpp)
-target_link_libraries(backlight_capture ${OpenCV_LIBS})
+target_link_libraries(backlight_capture opencv_core opencv_imgproc)
 
 if (USE_X11)
     target_compile_definitions(backlight_capture PRIVATE USE_X11)
